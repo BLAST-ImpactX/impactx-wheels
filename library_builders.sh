@@ -278,6 +278,6 @@ fi
 
 install_buildessentials
 build_fftw
-build_amrex
 build_zlib
 build_hdf5
+build_amrex

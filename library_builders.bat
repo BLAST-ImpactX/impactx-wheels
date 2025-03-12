@@ -15,6 +15,54 @@ goto:main
   python -m pip install --upgrade "patch==1.*"
 exit /b 0
 
+:build_amrex
+  if exist amrex-stamp exit /b 0
+
+  set "AMREX_VERSION=25.02"
+
+  curl -sLo "amrex-%AMREX_VERSION%.zip" ^
+    "https://github.com/AMReX-Codes/amrex/archive/refs/tags/%AMREX_VERSION%.zip"
+  powershell Expand-Archive "amrex-%AMREX_VERSION%.zip" -DestinationPath dep-amrex
+
+  dir
+
+  cmake -S dep-amrex/amrex-%AMREX_VERSION%   ^
+      -B build-amrex                   ^
+      -DAMReX_AMRLEVEL=OFF             ^
+      -DAMReX_EB=ON                    ^
+      -DAMReX_ENABLE_TESTS=OFF         ^
+      -DAMReX_FFT=ON                   ^
+      -DAMReX_FORTRAN=OFF              ^
+      -DAMReX_FORTRAN_INTERFACES=OFF   ^
+      -DAMReX_GPU_BACKEND=NONE         ^
+      -DAMReX_OMP=OFF                  ^
+      -DAMReX_LINEAR_SOLVERS_EM=ON     ^
+      -DAMReX_LINEAR_SOLVERS_INCFLO=ON ^
+      -DAMReX_MPI=OFF                  ^
+      -DAMReX_PARTICLES=ON             ^
+      -DAMReX_PROBINIT=OFF             ^
+      -DAMReX_PIC=ON                   ^
+      -DAMReX_SPACEDIM=3               ^
+      -DAMReX_TINY_PROFILE=ON          ^
+      -DAMReX_BUILD_SHARED_LIBS=ON     ^
+      -DBUILD_SHARED_LIBS=OFF          ^
+      -DCMAKE_BUILD_TYPE=Release       ^
+      -DCMAKE_INSTALL_PREFIX=%BUILD_PREFIX%/AMReX
+  if errorlevel 1 exit 1
+
+  cmake --build build-amrex --config Release --parallel %CPU_COUNT%
+  if errorlevel 1 exit 1
+
+  cmake --build build-amrex --target install --config Release
+  if errorlevel 1 exit 1
+
+  rmdir /s /q build-amrex
+  if errorlevel 1 exit 1
+
+  break > amrex-stamp
+  if errorlevel 1 exit 1
+exit /b 0
+
 :build_fftw
   if exist fftw-stamp exit /b 0
 
@@ -134,6 +182,7 @@ exit /b 0
 :main
 call :install_buildessentials
 call :build_fftw
+call :build_amrex
 call :build_zlib
 :: build_bzip2
 :: build_szip
