@@ -166,7 +166,7 @@ jobs:
         # Show a bit more output (pip -v)
         CIBW_BUILD_VERBOSITY: 1
         # Testing of the final wheel
-        CIBW_TEST_REQUIRES: pytest matplotlib numpy openpmd-api pandas scipy
+        CIBW_TEST_REQUIRES: pytest numpy pandas
         CIBW_TEST_COMMAND: pytest {project}/tests/python/test_push.py
       run: |
         cd src
