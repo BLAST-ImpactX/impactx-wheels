@@ -143,7 +143,9 @@ jobs:
       env:
         # (1) Disable PyPy (manylinux image: yum repo issues)
         #     https://github.com/pypa/manylinux/issues/899
-        CIBW_SKIP: "pp*-manylinux*"
+        # (2) Disable musl until this AMReX TODO is fixed:
+        #     https://github.com/AMReX-Codes/amrex/issues/4373
+        CIBW_SKIP: "pp*-manylinux* *musllinux*"
         CIBW_ARCHS: "${{ matrix.arch }}"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.9"
         # Install dependencies
