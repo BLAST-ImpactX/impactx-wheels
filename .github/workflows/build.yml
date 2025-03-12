@@ -45,14 +45,14 @@ jobs:
 
           # x86-64 (64bit)
           - name: 64bit Windows
-            os: windows-2019
+            os: windows-latest
             arch: "AMD64"
             env:
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # x86 (32bit)
           - name: 32bit Windows
-            os: windows-2019
+            os: windows-latest
             arch: "x86"
             env:
               CMAKE_GENERATOR: "Visual Studio 16 2019"
