@@ -1,0 +1,181 @@
+name: wheels
+
+on: [push, pull_request]
+
+jobs:
+  build_wheels:
+    name: Build ${{ matrix.arch }} wheel on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: "x86_64"
+            env:
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          - os: ubuntu-24.04
+            arch: "i686"
+            env:
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          - os: ubuntu-24.04-arm
+            arch: "aarch64"
+            env:
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          # builds faster on Travis-CI:
+          # - os: ubuntu-24.04
+          #   arch: "ppc64le"
+          #   env:
+          #     CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          # builds faster on Travis-CI:
+          # blocked by https://github.com/GTkorvo/dill/issues/15
+          #- os: ubuntu-24.04
+          #  arch: "s390x"
+          #  env:
+          #    CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          # x86-64 (64bit)
+          - os: windows-2019
+            arch: "AMD64"
+            env:
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          # x86 (32bit)
+          - os: windows-2019
+            arch: "x86"
+            env:
+              CMAKE_GENERATOR: "Visual Studio 16 2019"
+              CMAKE_GENERATOR_PLATFORM: "Win32"
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          - os: macos-13
+            arch: "x86_64"
+            env:
+              MACOSX_DEPLOYMENT_TARGET: 11.0
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          # Apple Silicon M1/arm64/aarch64 builds:
+          #   https://cibuildwheel.readthedocs.io/en/stable/faq/#apple-silicon
+          #   https://github.com/pypa/cibuildwheel/pull/704
+          - os: macos-13
+            arch: "arm64"
+            env:
+              CMAKE_OSX_ARCHITECTURES: "arm64"
+              MACOSX_DEPLOYMENT_TARGET: 11.0
+              CMAKE_BUILD_PARALLEL_LEVEL: 3
+
+          # Apple universal builds that contain x86-64 and arm64 binary code
+          #   Needs extra treatment of all librarys that are not CMake
+          #   controlled the dependencies:
+          #   https://developer.apple.com/documentation/apple-silicon/building-a-universal-macos-binary
+          # HDF5 tricky to build, even with CMake (as of 1.12)
+          # We could build them twice and use `lipo` to combine the lib artifacts.
+          #- os: macos-13
+          #  arch: "universal2"
+          #  env:
+          #    CMAKE_OSX_ARCHITECTURES: "arm64;x86_64"
+          #    MACOSX_DEPLOYMENT_TARGET: 11.0
+          #    CMAKE_BUILD_PARALLEL_LEVEL: 3
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: 'BLAST-ImpactX/impactx'
+        path: 'src'
+        ref: '25.02'
+
+    - uses: actions/checkout@v4
+      with:
+        path: 'src/.github/'
+
+    - name: Overwrite README for PyPI
+      run: cp src/.github/README.md src/
+
+    - uses: actions/setup-python@v5
+      name: Install Python
+      with:
+        python-version: '3.9'
+
+    - name: Install cibuildwheel
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        python -m pip install cibuildwheel==2.21.2
+
+#    # Patch: Fix versioning
+#    - name: Download Patch 1/2
+#      uses: suisei-cn/actions-download-file@818d6b7dc8fe73f2f924b6241f2b1134ca1377d9  # 1.6.0
+#      id: setupversion
+#      with:
+#        url: "https://github.com/openPMD/openPMD-api/pull/1680.patch"
+#        target: src/.patch/
+
+#    # Patch: PYBIND11_FINDPYTHON=ON
+#    - name: Download Patch 2/2
+#      uses: suisei-cn/actions-download-file@818d6b7dc8fe73f2f924b6241f2b1134ca1377d9  # 1.6.0
+#      id: setupfindpython
+#      with:
+#        url: "https://github.com/openPMD/openPMD-api/pull/1684.patch"
+#        target: src/.patch/
+
+#    - name: Apply Patches
+#      run: |
+#        cd src
+#        git apply --exclude=.github/workflows/windows.yml .patch/1680.patch
+#        git apply --exclude=cmake/dependencies/pybind11.cmake .patch/1684.patch
+#        git fetch
+#        git apply --exclude=setup.py -3 .patch/1684.patch
+
+    - name: Build wheel
+      env:
+        # (1) Disable PyPy (manylinux image: yum repo issues)
+        #     https://github.com/pypa/manylinux/issues/899
+        CIBW_SKIP: "pp*-manylinux*"
+        CIBW_ARCHS: "${{ matrix.arch }}"
+        CIBW_PROJECT_REQUIRES_PYTHON: ">=3.9"
+        # Install dependencies
+        CIBW_BEFORE_BUILD_LINUX: bash -x .github/library_builders.sh
+        CIBW_BEFORE_BUILD_MACOS: bash -x .github/library_builders.sh
+        CIBW_BEFORE_BUILD_WINDOWS: 'cmd /E:ON /V:ON /C .github\library_builders.bat'
+        # for the openPMD-api build, CMake shall search for
+        # static dependencies of HDF5 (see setup.py)
+        CIBW_ENVIRONMENT: HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' ZLIB_USE_STATIC_LIBS='ON' PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
+        CIBW_ENVIRONMENT_WINDOWS: HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' ZLIB_USE_STATIC_LIBS='ON' CMAKE_PREFIX_PATH='C:/Program Files (x86)/fftw;C:/Program Files (x86)/zlib'
+        CMAKE_BUILD_PARALLEL_LEVEL: "${{ matrix.env.CMAKE_BUILD_PARALLEL_LEVEL }}"
+        # C++17 support in macOS 10.13+ (partial) and 10.14+ (std::visit) and 10.15+ (std::filesystem::path)
+        #   https://cibuildwheel.readthedocs.io/en/stable/cpp_standards/#macos-and-deployment-target-versions
+        # arm64/aarch64 (M1/M2) requires 11.0+
+        MACOSX_DEPLOYMENT_TARGET: "${{ matrix.env.MACOSX_DEPLOYMENT_TARGET }}"
+        CMAKE_OSX_ARCHITECTURES: "${{ matrix.env.CMAKE_OSX_ARCHITECTURES }}"
+        # Windows cross-compilation
+        CMAKE_GENERATOR: "${{ matrix.env.CMAKE_GENERATOR }}"
+        CMAKE_GENERATOR_PLATFORM: "${{ matrix.env.CMAKE_GENERATOR_PLATFORM }}"
+        # Show a bit more output (pip -v)
+        CIBW_BUILD_VERBOSITY: 1
+        # Testing of the final wheel
+        CIBW_TEST_COMMAND: pytest src/tests/python
+      run: |
+        cd src
+        python -m pip install --upgrade pip setuptools wheel
+        python -m pip install --upgrade cmake
+        python setup.py sdist --dist-dir ../wheelhouse
+        python -m cibuildwheel --output-dir ../wheelhouse
+
+    - uses: actions/upload-artifact@v4
+      name: Publish as GitHub artifact
+      with:
+        name: wheels-${{ matrix.os }}-${{ matrix.arch }}
+        path: ./wheelhouse
+        overwrite: true
+
+    #- name: Publish on pypi.org
+    #  if: github.event_name == 'push' && github.repository == 'BLAST-ImpactX/impactx-wheels' && github.ref == 'refs/heads/wheels'
+    #  env:
+    #    TWINE_USERNAME: __token__
+    #    TWINE_PASSWORD: ${{ secrets.pypa_gh_action_upload }}
+    #  run: |
+    #    python -m pip install -U twine
+    #    python -m twine upload -r impactx-noacc --skip-existing wheelhouse/*
