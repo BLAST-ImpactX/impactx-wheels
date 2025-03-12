@@ -96,7 +96,7 @@ jobs:
       with:
         repository: 'BLAST-ImpactX/impactx'
         path: 'src'
-        ref: 'd463c44190ef2563539b5e2b2bd218a00751abcf'
+        ref: 'a69f8d8dd6e902f743770b59eca500ecbd181999'
 
     - uses: actions/checkout@v4
       with:
