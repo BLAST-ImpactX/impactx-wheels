@@ -72,32 +72,48 @@ function install_buildessentials {
     touch buildessentials-stamp
 }
 
-function build_zlib {
-    if [ -e zlib-stamp ]; then return; fi
+function build_amrex {
+    if [ -e amrex-stamp ]; then return; fi
 
-    ZLIB_VERSION="1.2.13"
+    AMREX_VERSION="25.02"
 
-    curl -sLO https://zlib.net/fossils/zlib-$ZLIB_VERSION.tar.gz
-    file zlib*.tar.gz
-    tar xzf zlib-$ZLIB_VERSION.tar.gz
-    rm zlib*.tar.gz
+    curl -sLO https://github.com/AMReX-Codes/amrex/releases/download/${AMREX_VERSION}/amrex-${AMREX_VERSION}.tar.gz
+    file amrex*.tar.gz
+    tar xzf amrex-${AMREX_VERSION}.tar.gz
+    rm amrex*.tar.gz
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
-    PATH=${CMAKE_BIN}:${PATH} cmake \
-      -S zlib-*     \
-      -B build-zlib \
-      -DBUILD_SHARED_LIBS=OFF \
-      -DCMAKE_BUILD_TYPE=Release \
+    PATH=${CMAKE_BIN}:${PATH} cmake    \
+      -S amrex                         \
+      -B build-amrex                   \
+      -DAMReX_AMRLEVEL=OFF             \
+      -DAMReX_EB=ON                    \
+      -DAMReX_ENABLE_TESTS=OFF         \
+      -DAMReX_FFT=ON                   \
+      -DAMReX_FORTRAN=OFF              \
+      -DAMReX_FORTRAN_INTERFACES=OFF   \
+      -DAMReX_GPU_BACKEND=NONE         \
+      -DAMReX_OMP=OFF                  \
+      -DAMReX_LINEAR_SOLVERS_EM=ON     \
+      -DAMReX_LINEAR_SOLVERS_INCFLO=ON \
+      -DAMReX_MPI=OFF                  \
+      -DAMReX_PARTICLES=ON             \
+      -DAMReX_PROBINIT=OFF             \
+      -DAMReX_PIC=ON                   \
+      -DAMReX_SPACEDIM=3               \
+      -DAMReX_TINY_PROFILE=ON          \
+      -DAMReX_BUILD_SHARED_LIBS=ON     \
+      -DBUILD_SHARED_LIBS=OFF          \
+      -DCMAKE_BUILD_TYPE=Release       \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}
 
-    PATH=${CMAKE_BIN}:${PATH} cmake --build build-zlib --parallel ${CPU_COUNT}
-    PATH=${CMAKE_BIN}:${PATH} cmake --build build-zlib --target install
-    rm -rf ${BUILD_PREFIX}/lib/libz.*dylib ${BUILD_PREFIX}/lib/libz.*so
+    PATH=${CMAKE_BIN}:${PATH} cmake --build build-amrex --parallel ${CPU_COUNT}
+    PATH=${CMAKE_BIN}:${PATH} cmake --build build-amrex --target install
 
-    rm -rf build-zlib
+    rm -rf build-amrex
 
-    touch zlib-stamp
+    touch amrex-stamp
 }
 
 function build_fftw {
@@ -218,6 +234,34 @@ function build_hdf5 {
     touch hdf5-stamp
 }
 
+function build_zlib {
+    if [ -e zlib-stamp ]; then return; fi
+
+    ZLIB_VERSION="1.2.13"
+
+    curl -sLO https://zlib.net/fossils/zlib-$ZLIB_VERSION.tar.gz
+    file zlib*.tar.gz
+    tar xzf zlib-$ZLIB_VERSION.tar.gz
+    rm zlib*.tar.gz
+
+    PY_BIN=$(which python3)
+    CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
+    PATH=${CMAKE_BIN}:${PATH} cmake \
+      -S zlib-*     \
+      -B build-zlib \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}
+
+    PATH=${CMAKE_BIN}:${PATH} cmake --build build-zlib --parallel ${CPU_COUNT}
+    PATH=${CMAKE_BIN}:${PATH} cmake --build build-zlib --target install
+    rm -rf ${BUILD_PREFIX}/lib/libz.*dylib ${BUILD_PREFIX}/lib/libz.*so
+
+    rm -rf build-zlib
+
+    touch zlib-stamp
+}
+
 # static libs need relocatable symbols for linking to shared python lib
 export CFLAGS+=" -fPIC"
 export CXXFLAGS+=" -fPIC"
@@ -234,5 +278,6 @@ fi
 
 install_buildessentials
 build_fftw
+build_amrex
 build_zlib
 build_hdf5
