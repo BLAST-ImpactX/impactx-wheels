@@ -112,7 +112,7 @@ jobs:
 
     - name: Install cibuildwheel
       run: |
-        python -m pip install --upgrade pip setuptools wheel
+        python -m pip install --upgrade pip build setuptools[core] wheel
         python -m pip install cibuildwheel==2.21.2
 
 #    # Patch: Fix versioning
@@ -166,13 +166,16 @@ jobs:
         # Show a bit more output (pip -v)
         CIBW_BUILD_VERBOSITY: 1
         # Testing of the final wheel
-        CIBW_TEST_COMMAND: pytest src/tests/python
+        CIBW_TEST_REQUIRES: pytest matplotlib numpy openpmd-api pandas scipy
+        CIBW_TEST_COMMAND: pytest {project}/tests/python
       run: |
         cd src
-        python -m pip install --upgrade pip setuptools wheel
+        python -m pip install --upgrade pip build setuptools[core] wheel
         python -m pip install --upgrade cmake
-        python setup.py sdist --dist-dir ../wheelhouse
         python -m cibuildwheel --output-dir ../wheelhouse
+
+      # note - intentionally skipping a source package
+      # python setup.py sdist --dist-dir ../wheelhouse
 
     - uses: actions/upload-artifact@v4
       name: Publish as GitHub artifact
@@ -181,6 +184,7 @@ jobs:
         path: ./wheelhouse
         overwrite: true
 
+    # TODO: setup secrets and upload to distinct PyPI project for -noacc
     #- name: Publish on pypi.org
     #  if: github.event_name == 'push' && github.repository == 'BLAST-ImpactX/impactx-wheels' && github.ref == 'refs/heads/wheels'
     #  env:
