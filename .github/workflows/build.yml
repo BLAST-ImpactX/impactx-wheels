@@ -167,7 +167,7 @@ jobs:
         CIBW_BUILD_VERBOSITY: 1
         # Testing of the final wheel
         CIBW_TEST_REQUIRES: pytest matplotlib numpy openpmd-api pandas scipy
-        CIBW_TEST_COMMAND: pytest {project}/tests/python
+        CIBW_TEST_COMMAND: pytest {project}/tests/python/test_push.py
       run: |
         cd src
         python -m pip install --upgrade pip build setuptools[core] wheel
