@@ -102,8 +102,10 @@ jobs:
       with:
         path: 'src/.github/'
 
-    - name: Overwrite README for PyPI
-      run: cp src/.github/README.md src/
+    - name: Overwrite README & Distribution Package for PyPI
+      run: |
+        cp src/.github/README.md src/
+        python src/.github/rename_package.py src/setup.py
 
     - uses: actions/setup-python@v5
       name: Install Python
