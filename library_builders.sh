@@ -9,8 +9,10 @@ BUILD_PREFIX="${BUILD_PREFIX:-/usr/local}"
 if [ "$(uname -s)" = "Darwin" ]
 then
     CPU_COUNT="${CPU_COUNT:-3}"
+    SUDO="sudo"
 else
     CPU_COUNT="${CPU_COUNT:-4}"
+    SUDO=""
 fi
 
 function install_buildessentials {
@@ -109,7 +111,7 @@ function build_amrex {
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}
 
     PATH=${CMAKE_BIN}:${PATH} cmake --build build-amrex --parallel ${CPU_COUNT}
-    PATH=${CMAKE_BIN}:${PATH} cmake --build build-amrex --target install
+    PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-amrex --target install
 
     rm -rf build-amrex
 
@@ -139,7 +141,7 @@ function build_fftw {
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}
 
     PATH=${CMAKE_BIN}:${PATH} cmake --build build-fftw --parallel ${CPU_COUNT}
-    PATH=${CMAKE_BIN}:${PATH} cmake --build build-fftw --target install
+    PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-fftw --target install
 
     rm -rf build-fftw
 
@@ -157,7 +159,7 @@ function build_fftw {
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}
 
     PATH=${CMAKE_BIN}:${PATH} cmake --build build-fftw --parallel ${CPU_COUNT}
-    PATH=${CMAKE_BIN}:${PATH} cmake --build build-fftw --target install
+    PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-fftw --target install
 
     rm -rf build-fftw
 
@@ -228,7 +230,7 @@ function build_hdf5 {
     fi
 
     make -j${CPU_COUNT}
-    make install
+    ${SUDO} make install
     cd ..
 
     touch hdf5-stamp
@@ -254,8 +256,8 @@ function build_zlib {
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}
 
     PATH=${CMAKE_BIN}:${PATH} cmake --build build-zlib --parallel ${CPU_COUNT}
-    PATH=${CMAKE_BIN}:${PATH} cmake --build build-zlib --target install
-    rm -rf ${BUILD_PREFIX}/lib/libz.*dylib ${BUILD_PREFIX}/lib/libz.*so
+    PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-zlib --target install
+    ${SUDO} rm -rf ${BUILD_PREFIX}/lib/libz.*dylib ${BUILD_PREFIX}/lib/libz.*so
 
     rm -rf build-zlib
 
