@@ -1,6 +1,6 @@
 set CURRENTDIR="%cd%"
 
-set BUILD_PREFIX="C:/Program Files (x86)"
+set BUILD_PREFIX="C:\Program Files (x86)"
 set CPU_COUNT="4"
 
 echo "CFLAGS: %CFLAGS%"
@@ -26,7 +26,7 @@ exit /b 0
 
   dir
 
-  cmake -S dep-amrex/amrex-%AMREX_VERSION%   ^
+  cmake -S dep-amrex\amrex-%AMREX_VERSION%   ^
       -B build-amrex                   ^
       -DAMReX_AMRLEVEL=OFF             ^
       -DAMReX_EB=ON                    ^
@@ -47,7 +47,7 @@ exit /b 0
       -DAMReX_BUILD_SHARED_LIBS=ON     ^
       -DBUILD_SHARED_LIBS=OFF          ^
       -DCMAKE_BUILD_TYPE=Release       ^
-      -DCMAKE_INSTALL_PREFIX=%BUILD_PREFIX%/AMReX
+      -DCMAKE_INSTALL_PREFIX=%BUILD_PREFIX%\AMReX
   if errorlevel 1 exit 1
 
   cmake --build build-amrex --config Release --parallel %CPU_COUNT%
@@ -71,7 +71,7 @@ exit /b 0
   powershell Expand-Archive fftw-3.3.10.zip -DestinationPath dep-fftw
 
   :: DOUBLE
-  cmake -S dep-fftw/fftw-3.3.10 -B build-fftw ^
+  cmake -S dep-fftw\fftw-3.3.10 -B build-fftw ^
     -DBUILD_SHARED_LIBS=OFF ^
     -DBUILD_TESTS=OFF       ^
     -DDISABLE_FORTRAN=ON    ^
@@ -88,7 +88,7 @@ exit /b 0
   if errorlevel 1 exit 1
 
   :: SINGLE
-  cmake -S dep-fftw/fftw-3.3.10 -B build-fftw ^
+  cmake -S dep-fftw\fftw-3.3.10 -B build-fftw ^
     -DBUILD_SHARED_LIBS=OFF ^
     -DBUILD_TESTS=OFF       ^
     -DDISABLE_FORTRAN=ON    ^
@@ -116,7 +116,7 @@ exit /b 0
     https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.14/hdf5-1.14.1/src/hdf5-1.14.1-2.zip
   powershell Expand-Archive hdf5-1.14.1-2.zip -DestinationPath dep-hdf5
 
-  cmake -S dep-hdf5/hdf5-1.14.1-2 -B build-hdf5 ^
+  cmake -S dep-hdf5\hdf5-1.14.1-2 -B build-hdf5 ^
     -DCMAKE_BUILD_TYPE=Release  ^
     -DCMAKE_VERBOSE_MAKEFILE=ON ^
     -DBUILD_SHARED_LIBS=OFF     ^
@@ -131,7 +131,7 @@ exit /b 0
     -DHDF5_ENABLE_SZIP_SUPPORT=OFF ^
     -DHDF5_ENABLE_Z_LIB_SUPPORT=ON ^
     -DZLIB_USE_STATIC_LIBS=ON   ^
-    -DCMAKE_INSTALL_PREFIX=%BUILD_PREFIX%/HDF5
+    -DCMAKE_INSTALL_PREFIX=%BUILD_PREFIX%\HDF5
   if errorlevel 1 exit 1
 
   cmake --build build-hdf5 --config Release --parallel %CPU_COUNT%
@@ -154,7 +154,7 @@ exit /b 0
     https://github.com/madler/zlib/archive/v1.2.13.zip
   powershell Expand-Archive zlib-1.2.13.zip -DestinationPath dep-zlib
 
-  cmake -S dep-zlib/zlib-1.2.13 -B build-zlib ^
+  cmake -S dep-zlib\zlib-1.2.13 -B build-zlib ^
     -DBUILD_SHARED_LIBS=ON ^
     -DCMAKE_BUILD_TYPE=Release
   if errorlevel 1 exit 1
@@ -182,8 +182,8 @@ exit /b 0
 :main
 call :install_buildessentials
 call :build_fftw
-call :build_amrex
 call :build_zlib
 :: build_bzip2
 :: build_szip
 call :build_hdf5
+call :build_amrex
