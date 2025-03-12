@@ -4,7 +4,7 @@ ImpactX enables high-performance modeling of beam dynamics in particle accelerat
 
 ## PyPI Build for Pip
 
-This is a distribution of ImpactX specifically for people that like the "pip" install method.
+This is a distribution of ImpactX specifically for people that prefer the "pip" installation method.
 
 Because of limitations of pip, we limit this package to be a **sequential CPU build**, i.e., it does not make use of *any* of the accelerated features of ImpactX.
 
@@ -13,11 +13,13 @@ If you need advanced features such as:
 - GPU support (CUDA/HIP/SYCL)
 - multi-node support (MPI)
 
-then use *another install method* [as described in our manual](https://impactx.readthedocs.io/en/latest/install/users.html).
+then use *another installation method* [as described in our manual](https://impactx.readthedocs.io/en/latest/install/users.html).
+
+If you have any questions or encounter any issues with installing ImpactX, please do not hesitate to [open an issue](https://github.com/BLAST-ImpactX/impactx/issues) or [start a discussion](https://github.com/orgs/BLAST-ImpactX/discussions) to receive help or share feedback.
 
 ## Documentation
 
-In order to learn how to install and run the code, please see the online documentation:
+Please see the online documentation for detailed examples, references, theory sections on our models, and how-to guides:
 https://impactx.readthedocs.io
 
 ## Acknowledgements
