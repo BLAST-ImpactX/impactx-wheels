@@ -188,12 +188,11 @@ jobs:
         path: ./wheelhouse
         overwrite: true
 
-    # TODO: setup secrets and upload to distinct PyPI project for -noacc
-    #- name: Publish on pypi.org
-    #  if: github.event_name == 'push' && github.repository == 'BLAST-ImpactX/impactx-wheels' && github.ref == 'refs/heads/wheels'
-    #  env:
-    #    TWINE_USERNAME: __token__
-    #    TWINE_PASSWORD: ${{ secrets.pypa_gh_action_upload }}
-    #  run: |
-    #    python -m pip install -U twine
-    #    python -m twine upload -r impactx-noacc --skip-existing wheelhouse/*
+    - name: Publish on pypi.org
+      if: github.event_name == 'push' && github.repository == 'BLAST-ImpactX/impactx-wheels' && github.ref == 'refs/heads/wheels-noacc'
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.pypa_gh_action_upload }}
+      run: |
+        python -m pip install -U twine
+        python -m twine upload --skip-existing wheelhouse/*
