@@ -157,7 +157,8 @@ jobs:
         # for the openPMD-api build, CMake shall search for
         # static dependencies of HDF5 (see setup.py)
         CIBW_ENVIRONMENT: HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' ZLIB_USE_STATIC_LIBS='ON' PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
-        CIBW_ENVIRONMENT_WINDOWS: HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' ZLIB_USE_STATIC_LIBS='ON' CMAKE_PREFIX_PATH='C:\Program Files (x86)\AMReX;C:\Program Files (x86)\fftw;C:\Program Files (x86)\zlib'
+        # CXXFLAGS see https://github.com/actions/runner-images/issues/10004
+        CIBW_ENVIRONMENT_WINDOWS: CXXFLAGS="/D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR" HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' ZLIB_USE_STATIC_LIBS='ON' CMAKE_PREFIX_PATH='C:\Program Files (x86)\AMReX;C:\Program Files (x86)\fftw;C:\Program Files (x86)\zlib'
         CMAKE_BUILD_PARALLEL_LEVEL: "${{ matrix.env.CMAKE_BUILD_PARALLEL_LEVEL }}"
         # C++17 support in macOS 10.13+ (partial) and 10.14+ (std::visit) and 10.15+ (std::filesystem::path)
         #   https://cibuildwheel.readthedocs.io/en/stable/cpp_standards/#macos-and-deployment-target-versions
