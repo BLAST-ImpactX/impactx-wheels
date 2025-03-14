@@ -77,17 +77,17 @@ function install_buildessentials {
 function build_amrex {
     if [ -e amrex-stamp ]; then return; fi
 
-    AMREX_VERSION="25.02"
+    AMREX_VERSION="fix_particle_alignment"
 
-    curl -sLO https://github.com/AMReX-Codes/amrex/releases/download/${AMREX_VERSION}/amrex-${AMREX_VERSION}.tar.gz
-    file amrex*.tar.gz
-    tar xzf amrex-${AMREX_VERSION}.tar.gz
-    rm amrex*.tar.gz
+    curl -sLO https://github.com/WeiqunZhang/amrex/archive/refs/heads/fix_particle_alignment.tar.gz
+    file fix_particle_alignment.tar.gz
+    tar xzf ${AMREX_VERSION}.tar.gz
+    rm ${AMREX_VERSION}.tar.gz
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
     PATH=${CMAKE_BIN}:${PATH} cmake    \
-      -S amrex                         \
+      -S amrex-fix_particle_alignment  \
       -B build-amrex                   \
       -DAMReX_AMRLEVEL=OFF             \
       -DAMReX_EB=ON                    \
