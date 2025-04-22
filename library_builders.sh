@@ -68,7 +68,7 @@ function install_buildessentials {
 
     python3 -m pip install -U pip setuptools wheel
     python3 -m pip install -U scikit-build
-    python3 -m pip install -U cmake
+    python3 -m pip install -U "cmake<4"
     python3 -m pip install -U "patch==1.*"
 
     touch buildessentials-stamp
@@ -138,7 +138,8 @@ function build_fftw {
       -DBUILD_TESTS=OFF          \
       -DDISABLE_FORTRAN=ON       \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}
+      -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
+      -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
     PATH=${CMAKE_BIN}:${PATH} cmake --build build-fftw --parallel ${CPU_COUNT}
     PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-fftw --target install
@@ -156,7 +157,8 @@ function build_fftw {
       -DDISABLE_FORTRAN=ON       \
       -DENABLE_FLOAT=ON          \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}
+      -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
+      -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
     PATH=${CMAKE_BIN}:${PATH} cmake --build build-fftw --parallel ${CPU_COUNT}
     PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-fftw --target install
@@ -253,7 +255,8 @@ function build_zlib {
       -B build-zlib \
       -DBUILD_SHARED_LIBS=OFF \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}
+      -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
+      -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
     PATH=${CMAKE_BIN}:${PATH} cmake --build build-zlib --parallel ${CPU_COUNT}
     PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-zlib --target install

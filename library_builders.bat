@@ -11,7 +11,7 @@ goto:main
 
 :install_buildessentials
   python -m pip install --upgrade pip setuptools wheel
-  python -m pip install --upgrade cmake
+  python -m pip install --upgrade "cmake<4"
   python -m pip install --upgrade "patch==1.*"
 exit /b 0
 
@@ -75,7 +75,8 @@ exit /b 0
     -DBUILD_SHARED_LIBS=OFF ^
     -DBUILD_TESTS=OFF       ^
     -DDISABLE_FORTRAN=ON    ^
-    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
   if errorlevel 1 exit 1
 
   cmake --build build-fftw --config Release --parallel %CPU_COUNT%
@@ -93,7 +94,8 @@ exit /b 0
     -DBUILD_TESTS=OFF       ^
     -DDISABLE_FORTRAN=ON    ^
     -DENABLE_FLOAT=ON       ^
-    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
   if errorlevel 1 exit 1
 
   cmake --build build-fftw --config Release --parallel %CPU_COUNT%
@@ -131,7 +133,8 @@ exit /b 0
     -DHDF5_ENABLE_SZIP_SUPPORT=OFF ^
     -DHDF5_ENABLE_Z_LIB_SUPPORT=ON ^
     -DZLIB_USE_STATIC_LIBS=ON   ^
-    -DCMAKE_INSTALL_PREFIX=%BUILD_PREFIX%\HDF5
+    -DCMAKE_INSTALL_PREFIX=%BUILD_PREFIX%\HDF5 ^
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
   if errorlevel 1 exit 1
 
   cmake --build build-hdf5 --config Release --parallel %CPU_COUNT%
