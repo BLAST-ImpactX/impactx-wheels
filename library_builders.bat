@@ -3,6 +3,8 @@ set CURRENTDIR="%cd%"
 set BUILD_PREFIX="C:\Program Files (x86)"
 set CPU_COUNT="4"
 
+set "CMAKE_GENERATOR_TOOLSET=ClangCl"
+
 echo "CFLAGS: %CFLAGS%"
 echo "CXXFLAGS: %CXXFLAGS%"
 echo "LDFLAGS: %LDFLAGS%"
