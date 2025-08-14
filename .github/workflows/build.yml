@@ -96,7 +96,7 @@ jobs:
       with:
         repository: 'BLAST-ImpactX/impactx'
         path: 'src'
-        ref: '25.07'
+        ref: '25.08'
 
     - uses: actions/checkout@v4
       with:
