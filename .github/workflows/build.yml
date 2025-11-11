@@ -96,7 +96,7 @@ jobs:
       with:
         repository: 'BLAST-ImpactX/impactx'
         path: 'src'
-        ref: '25.10'
+        ref: '25.11'
 
     - uses: actions/checkout@v4
       with:
@@ -110,12 +110,12 @@ jobs:
     - uses: actions/setup-python@v5
       name: Install Python
       with:
-        python-version: '3.9'
+        python-version: '3.11'
 
     - name: Install cibuildwheel
       run: |
         python -m pip install --upgrade pip build setuptools[core] wheel
-        python -m pip install cibuildwheel==2.21.2
+        python -m pip install cibuildwheel==3.2.1
 
 #    # Patch: Fix versioning
 #    - name: Download Patch 1/2
@@ -149,7 +149,7 @@ jobs:
         #     https://github.com/AMReX-Codes/amrex/issues/4373
         CIBW_SKIP: "pp*-manylinux* *musllinux*"
         CIBW_ARCHS: "${{ matrix.arch }}"
-        CIBW_PROJECT_REQUIRES_PYTHON: ">=3.9"
+        CIBW_PROJECT_REQUIRES_PYTHON: ">=3.10"
         # Install dependencies
         CIBW_BEFORE_BUILD_LINUX: bash -x .github/library_builders.sh
         CIBW_BEFORE_BUILD_MACOS: bash -x .github/library_builders.sh
