@@ -60,7 +60,7 @@ jobs:
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           - name: 64bit macOS
-            os: macos-13
+            os: macos-15-intel
             arch: "x86_64"
             env:
               MACOSX_DEPLOYMENT_TARGET: 11.0
@@ -84,7 +84,7 @@ jobs:
           # HDF5 tricky to build, even with CMake (as of 1.12)
           # We could build them twice and use `lipo` to combine the lib artifacts.
           #- name: 64bit macOS
-          #  os: macos-13
+          #  os: macos-15-intel
           #  arch: "universal2"
           #  env:
           #    CMAKE_OSX_ARCHITECTURES: "arm64;x86_64"
@@ -96,7 +96,7 @@ jobs:
       with:
         repository: 'BLAST-ImpactX/impactx'
         path: 'src'
-        ref: '25.11'
+        ref: '25.12'
 
     - uses: actions/checkout@v4
       with:

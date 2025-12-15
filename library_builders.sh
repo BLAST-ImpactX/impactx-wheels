@@ -77,7 +77,7 @@ function install_buildessentials {
 function build_amrex {
     if [ -e amrex-stamp ]; then return; fi
 
-    AMREX_VERSION="25.11"
+    AMREX_VERSION="25.12"
 
     curl -sLO https://github.com/AMReX-Codes/amrex/releases/download/${AMREX_VERSION}/amrex-${AMREX_VERSION}.tar.gz
     file amrex*.tar.gz
@@ -241,12 +241,12 @@ function build_hdf5 {
 function build_zlib {
     if [ -e zlib-stamp ]; then return; fi
 
-    ZLIB_VERSION="1.2.13"
+    ZLIB_VERSION="1.3.1"
 
-    curl -sLO https://zlib.net/fossils/zlib-$ZLIB_VERSION.tar.gz
-    file zlib*.tar.gz
-    tar xzf zlib-$ZLIB_VERSION.tar.gz
-    rm zlib*.tar.gz
+    curl -sLO https://github.com/madler/zlib/archive/refs/tags/v${ZLIB_VERSION}.tar.gz
+    file v${ZLIB_VERSION}.tar.gz
+    tar xzf v${ZLIB_VERSION}.tar.gz
+    rm v${ZLIB_VERSION}.tar.gz
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"

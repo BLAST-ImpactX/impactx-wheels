@@ -18,7 +18,7 @@ exit /b 0
 :build_amrex
   if exist amrex-stamp exit /b 0
 
-  set "AMREX_VERSION=25.11"
+  set "AMREX_VERSION=25.12"
 
   curl -sLo "amrex-%AMREX_VERSION%.zip" ^
     "https://github.com/AMReX-Codes/amrex/archive/refs/tags/%AMREX_VERSION%.zip"
@@ -153,11 +153,11 @@ exit /b 0
 :build_zlib
   if exist zlib-stamp exit /b 0
 
-  curl -sLo zlib-1.2.13.zip ^
-    https://github.com/madler/zlib/archive/v1.2.13.zip
-  powershell Expand-Archive zlib-1.2.13.zip -DestinationPath dep-zlib
+  curl -sLo zlib-1.3.1.zip ^
+    https://github.com/madler/zlib/archive/v1.3.1.zip
+  powershell Expand-Archive zlib-1.3.1.zip -DestinationPath dep-zlib
 
-  cmake -S dep-zlib\zlib-1.2.13 -B build-zlib ^
+  cmake -S dep-zlib\zlib-1.3.1 -B build-zlib ^
     -DBUILD_SHARED_LIBS=ON ^
     -DCMAKE_BUILD_TYPE=Release
   if errorlevel 1 exit 1
