@@ -77,7 +77,7 @@ function install_buildessentials {
 function build_amrex {
     if [ -e amrex-stamp ]; then return; fi
 
-    AMREX_VERSION="26.01"
+    AMREX_VERSION="26.02"
 
     curl -sLO https://github.com/AMReX-Codes/amrex/releases/download/${AMREX_VERSION}/amrex-${AMREX_VERSION}.tar.gz
     file amrex*.tar.gz
