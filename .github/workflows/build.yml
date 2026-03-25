@@ -149,7 +149,7 @@ jobs:
         #     https://github.com/AMReX-Codes/amrex/issues/4373
         CIBW_SKIP: "pp*-manylinux* *musllinux*"
         CIBW_ARCHS: "${{ matrix.arch }}"
-        CIBW_PROJECT_REQUIRES_PYTHON: ">=3.10"
+        CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
         # Install dependencies
         CIBW_BEFORE_BUILD_LINUX: bash -x .github/library_builders.sh
         CIBW_BEFORE_BUILD_MACOS: bash -x .github/library_builders.sh
