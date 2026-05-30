@@ -19,11 +19,15 @@ exit /b 0
 :build_amrex
   if exist amrex-stamp exit /b 0
 
-  set "AMREX_VERSION=26.03"
+  set "AMREX_VERSION=26.04"
 
   curl -sLo "amrex-%AMREX_VERSION%.zip" ^
     "https://github.com/AMReX-Codes/amrex/archive/refs/tags/%AMREX_VERSION%.zip"
   powershell Expand-Archive "amrex-%AMREX_VERSION%.zip" -DestinationPath dep-amrex
+
+  :: Fix CHANGES.md first-line version (line 1 only; a real # 26.03 section follows)
+  powershell -Command "$f='dep-amrex\amrex-%AMREX_VERSION%\CHANGES.md'; $c=Get-Content $f; $c[0]='# %AMREX_VERSION%'; Set-Content -Path $f -Value $c"
+  if errorlevel 1 exit 1
 
   dir
 

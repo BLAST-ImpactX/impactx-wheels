@@ -77,12 +77,16 @@ function install_buildessentials {
 function build_amrex {
     if [ -e amrex-stamp ]; then return; fi
 
-    AMREX_VERSION="26.03"
+    AMREX_VERSION="26.04"
 
     curl -sLO https://github.com/AMReX-Codes/amrex/releases/download/${AMREX_VERSION}/amrex-${AMREX_VERSION}.tar.gz
     file amrex*.tar.gz
     tar xzf amrex-${AMREX_VERSION}.tar.gz
     rm amrex*.tar.gz
+
+    # Fix CHANGES.md first-line version (line 1 only; a real # 26.03 section follows)
+    sed -i.bak "1s/^# .*/# ${AMREX_VERSION}/" amrex/CHANGES.md
+    rm -f amrex/CHANGES.md.bak
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
