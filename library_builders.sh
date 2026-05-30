@@ -84,6 +84,10 @@ function build_amrex {
     tar xzf amrex-${AMREX_VERSION}.tar.gz
     rm amrex*.tar.gz
 
+    # Fix CHANGES.md first-line version (line 1 only; a real # 26.03 section follows)
+    sed -i.bak "1s/^# .*/# ${AMREX_VERSION}/" amrex/CHANGES.md
+    rm -f amrex/CHANGES.md.bak
+
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
     PATH=${CMAKE_BIN}:${PATH} cmake    \
