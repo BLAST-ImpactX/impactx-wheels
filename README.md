@@ -6,7 +6,7 @@ ImpactX enables high-performance modeling of beam dynamics in particle accelerat
 
 This is a distribution of ImpactX specifically for people that prefer the "pip" installation method.
 
--Because of limitations of pip, we limit this package to be a **sequential CPU build**, i.e., it does not make use of *any* of the accelerated features of ImpactX besides some light-touch vectorization.
+Because of limitations of pip, we limit this package to be a **sequential CPU build**, i.e., it does not make use of *any* of the accelerated features of ImpactX besides some light-touch vectorization.
 
 If you need advanced features such as:
 - multi-core CPU support (OpenMP)
