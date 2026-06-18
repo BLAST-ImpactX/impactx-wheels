@@ -6,7 +6,7 @@ ImpactX enables high-performance modeling of beam dynamics in particle accelerat
 
 This is a distribution of ImpactX specifically for people that prefer the "pip" installation method.
 
-Because of limitations of pip, we limit this package to be a **sequential CPU build**, i.e., it does not make use of *any* of the accelerated features of ImpactX.
+-Because of limitations of pip, we limit this package to be a **sequential CPU build**, i.e., it does not make use of *any* of the accelerated features of ImpactX besides some light-touch vectorization.
 
 If you need advanced features such as:
 - multi-core CPU support (OpenMP)
@@ -15,7 +15,17 @@ If you need advanced features such as:
 
 then use *another installation method* [as described in our manual](https://impactx.readthedocs.io/en/latest/install/users.html).
 
-If you have any questions or encounter any issues with installing ImpactX, please do not hesitate to [open an issue](https://github.com/BLAST-ImpactX/impactx/issues) or [start a discussion](https://github.com/orgs/BLAST-ImpactX/discussions) to receive help or share feedback.
+If you have any questions or encounter any issues with installing or running ImpactX, please do not hesitate to [open an issue](https://github.com/BLAST-ImpactX/impactx/issues) or [start a discussion](https://github.com/orgs/BLAST-ImpactX/discussions) to receive help or share feedback.
+
+## Supported CPUs
+
+Because the vectorized wheels are compiled for a baseline instruction set, they require a
+reasonably modern CPU (year 2016 or newer):
+
+- **x86-64** Linux/Intel macOS/Windows: Intel CPU of the Haswell generation (2013) or newer,
+  or an AMD CPU of the Excavator (2015) / Zen (2017) generation or newer.
+- **arm64 / aarch64** Linux/Apple Silcon macOS: all ARMv8-A and newer supported
+- **x86-32** 32-bit Linux: all CPUs supported (no SIMD)
 
 ## Documentation
 
