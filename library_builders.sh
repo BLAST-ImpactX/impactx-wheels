@@ -103,6 +103,7 @@ function build_amrex {
       -DAMReX_PARTICLES=ON             \
       -DAMReX_PROBINIT=OFF             \
       -DAMReX_PIC=ON                   \
+      -DAMReX_SIMD=${AMREX_SIMD:-OFF}  \
       -DAMReX_SPACEDIM=3               \
       -DAMReX_TINY_PROFILE=ON          \
       -DAMReX_BUILD_SHARED_LIBS=ON     \
@@ -267,6 +268,31 @@ function build_zlib {
     touch zlib-stamp
 }
 
+function build_virsimd {
+    if [ -e virsimd-stamp ]; then return; fi
+
+    VIRSIMD_VERSION="0.4.4"
+
+    curl -sLO https://github.com/mattkretz/vir-simd/archive/refs/tags/v${VIRSIMD_VERSION}.tar.gz
+    file v${VIRSIMD_VERSION}.tar.gz
+    tar xzf v${VIRSIMD_VERSION}.tar.gz
+    rm v${VIRSIMD_VERSION}.tar.gz
+
+    # header-only: configure + install only (no compilation)
+    PY_BIN=$(which python3)
+    CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
+    PATH=${CMAKE_BIN}:${PATH} cmake \
+      -S vir-simd-${VIRSIMD_VERSION} \
+      -B build-virsimd \
+      -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
+      -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-virsimd --target install
+
+    rm -rf build-virsimd
+
+    touch virsimd-stamp
+}
+
 # static libs need relocatable symbols for linking to shared python lib
 export CFLAGS+=" -fPIC"
 export CXXFLAGS+=" -fPIC"
@@ -285,4 +311,7 @@ install_buildessentials
 build_fftw
 build_zlib
 build_hdf5
+if [ "${AMREX_SIMD:-OFF}" = "ON" ]; then
+    build_virsimd
+fi
 build_amrex

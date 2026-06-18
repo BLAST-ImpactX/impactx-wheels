@@ -14,18 +14,22 @@ jobs:
             os: ubuntu-24.04
             arch: "x86_64"
             env:
+              SIMD: "ON"
+              WHEEL_ARCHFLAGS: "-march=x86-64-v3 -mtune=generic"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           - name: 32bit Linux
             os: ubuntu-24.04
             arch: "i686"
             env:
+              SIMD: "OFF"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           - name: 64bit Linux
             os: ubuntu-24.04-arm
             arch: "aarch64"
             env:
+              SIMD: "ON"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # builds faster on Travis-CI:
@@ -48,6 +52,10 @@ jobs:
             os: windows-2022
             arch: "AMD64"
             env:
+              # Explicit SIMD (vir-simd) needs clang/gcc builtins, not MSVC, so SIMD stays OFF.
+              # We still target AVX2 via MSVC codegen (/arch:AVX2): scalar FMA + auto-vectorization.
+              SIMD: "OFF"
+              WHEEL_ARCHFLAGS: "/arch:AVX2"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # x86 (32bit)
@@ -55,6 +63,7 @@ jobs:
             os: windows-2022
             arch: "x86"
             env:
+              SIMD: "OFF"
               CMAKE_GENERATOR: "Visual Studio 17 2022"
               CMAKE_GENERATOR_PLATFORM: "Win32"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
@@ -63,6 +72,8 @@ jobs:
             os: macos-15-intel
             arch: "x86_64"
             env:
+              SIMD: "ON"
+              WHEEL_ARCHFLAGS: "-march=x86-64-v3 -mtune=generic"
               MACOSX_DEPLOYMENT_TARGET: 11.0
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
@@ -73,6 +84,7 @@ jobs:
             os: macos-14
             arch: "arm64"
             env:
+              SIMD: "ON"
               CMAKE_OSX_ARCHITECTURES: "arm64"
               MACOSX_DEPLOYMENT_TARGET: 11.0
               CMAKE_BUILD_PARALLEL_LEVEL: 3
@@ -156,11 +168,15 @@ jobs:
         CIBW_BEFORE_BUILD_WINDOWS: 'cmd /E:ON /V:ON /C .github\library_builders.bat'
         # for the openPMD-api build, CMake shall search for
         # static dependencies of HDF5 (see setup.py)
-        CIBW_ENVIRONMENT: HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' ZLIB_USE_STATIC_LIBS='ON' PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
+        # SIMD ('${{ matrix.env.SIMD }}') and the x86_64 march/mtune flags are set per matrix arch;
+        # AMREX_SIMD drives the external AMReX build in library_builders.sh, IMPACTX_SIMD the wheel.
+        CIBW_ENVIRONMENT: HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' IMPACTX_SIMD='${{ matrix.env.SIMD }}' AMREX_SIMD='${{ matrix.env.SIMD }}' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' ZLIB_USE_STATIC_LIBS='ON' PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
         # ImpactX defaults Python IPO/LTO to ON unless CMAKE_INTERPROCEDURAL_OPTIMIZATION
         # is set explicitly. On Windows that ends up enabling /GL and /LTCG via pybind11,
         # which currently trips an MSVC ICE in src/python/WakeConvolution.cpp.
-        CIBW_ENVIRONMENT_WINDOWS: HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' ZLIB_USE_STATIC_LIBS='ON' CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF' CMAKE_PREFIX_PATH='C:\Program Files (x86)\AMReX;C:\Program Files (x86)\fftw;C:\Program Files (x86)\zlib'
+        # CFLAGS/CXXFLAGS carry /arch:AVX2 on AMD64 only (empty on Win32); CMake seeds these
+        # into both the AMReX pre-build and the ImpactX wheel. No explicit vir-simd SIMD on MSVC.
+        CIBW_ENVIRONMENT_WINDOWS: HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' ZLIB_USE_STATIC_LIBS='ON' CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF' CMAKE_PREFIX_PATH='C:\Program Files (x86)\AMReX;C:\Program Files (x86)\fftw;C:\Program Files (x86)\zlib'
         # cibuildwheel does not repair Windows wheels by default. Since pyAMReX links
         # against the shared AMReX runtime on Windows, vendor that DLL into the wheel.
         CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: 'delvewheel repair --add-path "C:\Program Files (x86)\AMReX\bin" -v -w {dest_dir} {wheel}'
