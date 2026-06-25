@@ -3,8 +3,6 @@
 
 set -eu -o pipefail
 
-BUILD_PREFIX="${BUILD_PREFIX:-/usr/local}"
-
 # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#supported-runners-and-hardware-resources
 if [ "$(uname -s)" = "Darwin" ]
 then
@@ -66,12 +64,18 @@ function install_buildessentials {
         rm -f /usr/lib64/libpthread.a /usr/lib64/libm.a /usr/lib64/librt.a
     fi
 
+    touch buildessentials-stamp
+}
+
+function install_pyessentials {
+    if [ -e pyessentials-stamp ]; then return; fi
+
     python3 -m pip install -U pip setuptools wheel
     python3 -m pip install -U scikit-build
     python3 -m pip install -U "cmake<4"
     python3 -m pip install -U "patch==1.*"
 
-    touch buildessentials-stamp
+    touch pyessentials-stamp
 }
 
 function build_amrex {
@@ -86,7 +90,10 @@ function build_amrex {
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
-    PATH=${CMAKE_BIN}:${PATH} cmake    \
+    # ${EMCMAKE}/${EMMAKE} are empty for native builds and emcmake/emmake for WASM.
+    # AMREX_SHARED is ON for native (wheel links the AMReX runtime), OFF for WASM
+    # (everything is statically linked into a single wasm module).
+    PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \
       -S amrex                         \
       -B build-amrex                   \
       -DAMReX_AMRLEVEL=OFF             \
@@ -96,7 +103,7 @@ function build_amrex {
       -DAMReX_FORTRAN=OFF              \
       -DAMReX_FORTRAN_INTERFACES=OFF   \
       -DAMReX_GPU_BACKEND=NONE         \
-      -DAMReX_OMP=OFF                  \
+      -DAMReX_OMP=${AMREX_OMP:-OFF}    \
       -DAMReX_LINEAR_SOLVERS_EM=ON     \
       -DAMReX_LINEAR_SOLVERS_INCFLO=ON \
       -DAMReX_MPI=OFF                  \
@@ -106,13 +113,15 @@ function build_amrex {
       -DAMReX_SIMD=${AMREX_SIMD:-OFF}  \
       -DAMReX_SPACEDIM=3               \
       -DAMReX_TINY_PROFILE=ON          \
-      -DAMReX_BUILD_SHARED_LIBS=ON     \
+      -DAMReX_BUILD_SHARED_LIBS=${AMREX_SHARED:-ON} \
       -DBUILD_SHARED_LIBS=OFF          \
+      -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+      -DCMAKE_SHARED_LINKER_FLAGS="${AMREX_SHARED_LINKER_FLAGS:-}" \
       -DCMAKE_BUILD_TYPE=Release       \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}
 
-    PATH=${CMAKE_BIN}:${PATH} cmake --build build-amrex --parallel ${CPU_COUNT}
-    PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-amrex --target install
+    PATH=${CMAKE_BIN}:${PATH} ${EMMAKE} cmake --build build-amrex --parallel ${CPU_COUNT}
+    PATH=${CMAKE_BIN}:${PATH} ${SUDO} ${EMMAKE} cmake --build build-amrex --target install
 
     rm -rf build-amrex
 
@@ -132,37 +141,39 @@ function build_fftw {
     # DOUBLE
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
-    PATH=${CMAKE_BIN}:${PATH} cmake \
+    PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \
       -S fftw-*                  \
       -B build-fftw              \
       -DBUILD_SHARED_LIBS=OFF    \
       -DBUILD_TESTS=OFF          \
       -DDISABLE_FORTRAN=ON       \
+      -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
-    PATH=${CMAKE_BIN}:${PATH} cmake --build build-fftw --parallel ${CPU_COUNT}
-    PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-fftw --target install
+    PATH=${CMAKE_BIN}:${PATH} ${EMMAKE} cmake --build build-fftw --parallel ${CPU_COUNT}
+    PATH=${CMAKE_BIN}:${PATH} ${SUDO} ${EMMAKE} cmake --build build-fftw --target install
 
     rm -rf build-fftw
 
     # SINGLE
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
-    PATH=${CMAKE_BIN}:${PATH} cmake \
+    PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \
       -S fftw-*                  \
       -B build-fftw              \
       -DBUILD_SHARED_LIBS=OFF    \
       -DBUILD_TESTS=OFF          \
       -DDISABLE_FORTRAN=ON       \
       -DENABLE_FLOAT=ON          \
+      -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
-    PATH=${CMAKE_BIN}:${PATH} cmake --build build-fftw --parallel ${CPU_COUNT}
-    PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-fftw --target install
+    PATH=${CMAKE_BIN}:${PATH} ${EMMAKE} cmake --build build-fftw --parallel ${CPU_COUNT}
+    PATH=${CMAKE_BIN}:${PATH} ${SUDO} ${EMMAKE} cmake --build build-fftw --target install
 
     rm -rf build-fftw
 
@@ -239,6 +250,63 @@ function build_hdf5 {
     touch hdf5-stamp
 }
 
+# WASM/Emscripten: CMake-configured static build of HDF5 for wasm32-emscripten.
+# HDF5 1.14.0+ removed the H5detect/H5make_libsettings native code generators,
+# which makes cross-compilation via CMake straightforward. The Emscripten-
+# specific cache values (no getpwuid/signal, empty exe suffix, PIC) and the
+# FE_INVALID patch are taken from usnistgov/libhdf5-wasm.
+function build_hdf5_cmake {
+    if [ -e hdf5-stamp ]; then return; fi
+
+    HDF5_VERSION="1.14.6"
+    # pinned libhdf5-wasm revision the FE_INVALID patch is fetched from
+    LIBHDF5_WASM_REF="2069e0a2ab8073a1b7f08a10adae0ce6d73905fe"
+
+    curl -sLo hdf5-${HDF5_VERSION}.tar.gz \
+        https://github.com/HDFGroup/hdf5/releases/download/hdf5_${HDF5_VERSION}/hdf5-${HDF5_VERSION}.tar.gz
+    file hdf5*.tar.gz
+    tar -xzf hdf5*.tar.gz
+    rm hdf5*.tar.gz
+
+    # Emscripten's <fenv.h> may not define FE_INVALID; guard feclearexcept().
+    curl -sLo hdf5-${HDF5_VERSION}/FE_INVALID.patch \
+        https://raw.githubusercontent.com/usnistgov/libhdf5-wasm/${LIBHDF5_WASM_REF}/patches/${HDF5_VERSION}/FE_INVALID.patch
+    ( cd hdf5-${HDF5_VERSION} && patch -p1 < FE_INVALID.patch )
+
+    PY_BIN=$(which python3)
+    CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
+    PATH=${CMAKE_BIN}:${PATH} emcmake cmake -S hdf5-${HDF5_VERSION} -B build-hdf5 \
+        -DCMAKE_BUILD_TYPE=Release                     \
+        -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}         \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON           \
+        -DCMAKE_EXECUTABLE_SUFFIX_C=                   \
+        -DBUILD_SHARED_LIBS=OFF                        \
+        -DBUILD_STATIC_LIBS=ON                         \
+        -DBUILD_TESTING=OFF                            \
+        -DHDF5_BUILD_TESTS=OFF                         \
+        -DHDF5_BUILD_TOOLS=OFF                         \
+        -DHDF5_BUILD_UTILS=OFF                         \
+        -DHDF5_BUILD_EXAMPLES=OFF                      \
+        -DHDF5_BUILD_CPP_LIB=OFF                       \
+        -DHDF5_BUILD_HL_LIB=OFF                        \
+        -DHDF5_BUILD_FORTRAN=OFF                       \
+        -DHDF5_BUILD_JAVA=OFF                          \
+        -DHDF5_ENABLE_PARALLEL=OFF                     \
+        -DHDF5_ENABLE_THREADSAFE=OFF                   \
+        -DHDF5_ENABLE_Z_LIB_SUPPORT=ON                 \
+        -DHDF5_ENABLE_SZIP_SUPPORT=OFF                 \
+        -DHDF5_USE_ZLIB_STATIC=ON                      \
+        -DZLIB_USE_STATIC_LIBS=ON                      \
+        -DH5_HAVE_GETPWUID=OFF                         \
+        -DH5_HAVE_SIGNAL=OFF
+    PATH=${CMAKE_BIN}:${PATH} emmake cmake --build build-hdf5 --parallel ${CPU_COUNT}
+    PATH=${CMAKE_BIN}:${PATH} emmake cmake --build build-hdf5 --target install
+
+    rm -rf build-hdf5
+
+    touch hdf5-stamp
+}
+
 function build_zlib {
     if [ -e zlib-stamp ]; then return; fi
 
@@ -251,17 +319,19 @@ function build_zlib {
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
-    PATH=${CMAKE_BIN}:${PATH} cmake \
+    # ${EMCMAKE}/${EMMAKE} are empty for native builds and emcmake/emmake for WASM
+    PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \
       -S zlib-*     \
       -B build-zlib \
       -DBUILD_SHARED_LIBS=OFF \
+      -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
-    PATH=${CMAKE_BIN}:${PATH} cmake --build build-zlib --parallel ${CPU_COUNT}
-    PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-zlib --target install
-    ${SUDO} rm -rf ${BUILD_PREFIX}/lib/libz.*dylib ${BUILD_PREFIX}/lib/libz.*so
+    PATH=${CMAKE_BIN}:${PATH} ${EMMAKE} cmake --build build-zlib --parallel ${CPU_COUNT}
+    PATH=${CMAKE_BIN}:${PATH} ${SUDO} ${EMMAKE} cmake --build build-zlib --target install
+    ${SUDO} rm -rf ${BUILD_PREFIX}/lib/libz.*dylib ${BUILD_PREFIX}/lib/libz.*so*
 
     rm -rf build-zlib
 
@@ -281,37 +351,81 @@ function build_virsimd {
     # header-only: configure + install only (no compilation)
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
-    PATH=${CMAKE_BIN}:${PATH} cmake \
+    PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \
       -S vir-simd-${VIRSIMD_VERSION} \
       -B build-virsimd \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-    PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-virsimd --target install
+    PATH=${CMAKE_BIN}:${PATH} ${SUDO} ${EMMAKE} cmake --build build-virsimd --target install
 
     rm -rf build-virsimd
 
     touch virsimd-stamp
 }
 
-# static libs need relocatable symbols for linking to shared python lib
-export CFLAGS+=" -fPIC"
-export CXXFLAGS+=" -fPIC"
+if [ "${1:-}" = "wasm" ]; then
+    # Cross-compile every C/C++ dependency for wasm32-emscripten into the
+    # Emscripten sysroot, where the Pyodide wheel build's find_package() picks
+    # them up. The emsdk toolchain is only on PATH after cibuildwheel sets up
+    # the pyodide xbuildenv, so this runs in BEFORE_BUILD (not BEFORE_ALL).
+    export BUILD_PREFIX="$(em-config CACHE)/sysroot"
 
-# compiler hints for macOS cross-compiles
-#   https://developer.apple.com/documentation/apple-silicon/building-a-universal-macos-binary
-if [[ "${CMAKE_OSX_ARCHITECTURES-}" == "arm64" ]]; then
-    export CC="/usr/bin/clang"
-    export CXX="/usr/bin/clang++"
-    export CFLAGS+=" -arch arm64"
-    export CPPFLAGS+=" -arch arm64"
-    export CXXFLAGS+=" -arch arm64"
-fi
+    # CMake cross-compile wrappers for Emscripten
+    export EMCMAKE="emcmake"
+    export EMMAKE="emmake"
 
-install_buildessentials
-build_fftw
-build_zlib
-build_hdf5
-if [ "${AMREX_SIMD:-OFF}" = "ON" ]; then
-    build_virsimd
+    # AMReX linkage (driven by the CI matrix, default static):
+    #   ON  -> build libamrex as a true Emscripten side module (-sSIDE_MODULE)
+    #          so the `amrex` (pyAMReX) and `impactx` extension modules share
+    #          ONE AMReX runtime (singletons + RTTI/pybind type registry).
+    #          auditwheel-emscripten then vendors libamrex*.so into the wheel.
+    #   OFF -> static AMReX in each module (probe: reproduces the duplicate-
+    #          globals breakage when objects cross the module boundary).
+    export AMREX_SHARED="${AMREX_SHARED:-OFF}"
+    if [ "${AMREX_SHARED}" = "ON" ]; then
+        export AMREX_SHARED_LINKER_FLAGS="-sSIDE_MODULE=1"
+    fi
+
+    install_pyessentials
+    build_zlib
+    build_hdf5_cmake
+    build_fftw
+    if [ "${AMREX_SIMD:-OFF}" = "ON" ]; then
+        build_virsimd
+    fi
+    build_amrex
+else
+    # Installation base path of all deps
+    export BUILD_PREFIX="${BUILD_PREFIX:-/usr/local}"
+
+    # CMake cross-compile wrappers for Emscripten are empty for native builds
+    export EMCMAKE=""
+    export EMMAKE=""
+
+    # native: build a shared AMReX runtime the wheel links against
+    export AMREX_SHARED="ON"
+
+    # static libs need relocatable symbols for linking to shared python lib
+    export CFLAGS+=" -fPIC"
+    export CXXFLAGS+=" -fPIC"
+
+    # compiler hints for macOS cross-compiles
+    #   https://developer.apple.com/documentation/apple-silicon/building-a-universal-macos-binary
+    if [[ "${CMAKE_OSX_ARCHITECTURES-}" == "arm64" ]]; then
+        export CC="/usr/bin/clang"
+        export CXX="/usr/bin/clang++"
+        export CFLAGS+=" -arch arm64"
+        export CPPFLAGS+=" -arch arm64"
+        export CXXFLAGS+=" -arch arm64"
+    fi
+
+    install_buildessentials
+    install_pyessentials
+    build_fftw
+    build_zlib
+    build_hdf5
+    if [ "${AMREX_SIMD:-OFF}" = "ON" ]; then
+        build_virsimd
+    fi
+    build_amrex
 fi
-build_amrex
