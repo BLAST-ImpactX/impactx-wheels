@@ -7,12 +7,12 @@ index 6deb60b..9f349b5 100644
  import subprocess
  import sys
 +import sysconfig
- 
+
  from setuptools import Extension, setup
  from setuptools.command.build import build
 @@ -80,14 +81,30 @@ class CMakeBuild(build_ext):
              extdir += os.path.sep
- 
+
          pyv = sys.version_info
 -        cmake_args = [
 -            # Python: use the calling interpreter in CMake
