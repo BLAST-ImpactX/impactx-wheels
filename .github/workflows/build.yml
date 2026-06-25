@@ -6,9 +6,18 @@ jobs:
   build_wheels:
     name: ${{ matrix.name }} (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
+    # WASM exploration rows are probes: a failure must not fail the workflow.
+    continue-on-error: ${{ matrix.continue_on_error || false }}
     strategy:
       fail-fast: false
       matrix:
+        # Per-entry knobs (all optional; sensible native defaults applied below):
+        #   host_python  cibuildwheel host interpreter (default 3.11)
+        #   platform     CIBW_PLATFORM                 (default auto)
+        #   build        CIBW_BUILD                    (default *, i.e. all)
+        #   patches      space-separated src patches   (default: none)
+        #   publish      upload to PyPI?               (default: yes; "false" to skip)
+        #   continue_on_error  job is a probe          (default: false)
         include:
           - name: 64bit Linux
             os: ubuntu-24.04
@@ -103,6 +112,120 @@ jobs:
           #    MACOSX_DEPLOYMENT_TARGET: 11.0
           #    CMAKE_BUILD_PARALLEL_LEVEL: 3
 
+          # WebAssembly / Pyodide (wasm32-emscripten); published to PyPI under
+          # the pyemscripten platform tag (PEP 783).
+          #   https://cibuildwheel.pypa.io/en/stable/platforms/#pyodide
+          # Single-threaded NOACC (stock Pyodide cannot load -pthread modules),
+          # WASM SIMD via -msimd128, HDF5 (openPMD) + FFT; MPI off. The deps
+          # (zlib, HDF5, FFTW, AMReX) are cross-compiled in BEFORE_BUILD because
+          # the Emscripten toolchain is only on PATH after the pyodide xbuildenv
+          # is set up; the same sysroot is reused by the wheel build.
+          #
+          # AMReX is built as a true Emscripten side module (AMREX_SHARED=ON)
+          # and vendored into the wheel by auditwheel-emscripten, so the `amrex`
+          # (pyAMReX) and `impactx` extension modules share ONE AMReX runtime --
+          # required because ImpactX returns pyAMReX objects across the module
+          # boundary (e.g. sim.particle_container()).
+          - name: WebAssembly
+            os: ubuntu-24.04
+            arch: "wasm32"
+            host_python: "3.12"   # cibuildwheel 4.x needs Python >= 3.11
+            platform: "pyodide"
+            build: "cp314-pyodide_wasm32"
+            patches: ".github/setup-py-crosscompile-impactx.patch"
+            env:
+              COMPUTE: "NOACC"
+              SIMD: "ON"
+              AMREX_OMP: "OFF"
+              AMREX_SHARED: "ON"
+              WHEEL_ARCHFLAGS: "-msimd128"
+              REPAIR_PYODIDE: 'pip install auditwheel-emscripten && pyodide auditwheel repair {wheel} --libdir "$(em-config CACHE)/sysroot/lib" -o {dest_dir}'
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          # --- WASM exploration probes (compile/run experiments, never published) ---
+          # A/B for the SIMD speedup question: identical to the shipped wheel but
+          # with WASM SIMD off (IMPACTX_COMPUTE=NOACC x IMPACTX_SIMD=OFF).
+          - name: WebAssembly (NOACC, no SIMD)
+            os: ubuntu-24.04
+            arch: "wasm32"
+            host_python: "3.12"
+            platform: "pyodide"
+            build: "cp314-pyodide_wasm32"
+            patches: ".github/setup-py-crosscompile-impactx.patch"
+            publish: "false"
+            continue_on_error: true
+            env:
+              COMPUTE: "NOACC"
+              SIMD: "OFF"
+              AMREX_OMP: "OFF"
+              AMREX_SHARED: "ON"
+              WHEEL_ARCHFLAGS: ""
+              REPAIR_PYODIDE: 'pip install auditwheel-emscripten && pyodide auditwheel repair {wheel} --libdir "$(em-config CACHE)/sysroot/lib" -o {dest_dir}'
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          # OpenMP probes (IMPACTX_COMPUTE=OMP x IMPACTX_SIMD=ON/OFF): expected to
+          # fail to LOAD in stock Pyodide (no -pthread / SharedArrayBuffer). Build
+          # + load signal on whether AMReX_OMP cross-compiles under Emscripten.
+          # Threaded wheels need a custom from-source Pyodide + cross-origin-
+          # isolation (COOP/COEP) headers and a pre-sized -sPTHREAD_POOL_SIZE.
+          - name: WebAssembly (OpenMP, SIMD)
+            os: ubuntu-24.04
+            arch: "wasm32"
+            host_python: "3.12"
+            platform: "pyodide"
+            build: "cp314-pyodide_wasm32"
+            patches: ".github/setup-py-crosscompile-impactx.patch"
+            publish: "false"
+            continue_on_error: true
+            env:
+              COMPUTE: "OMP"
+              SIMD: "ON"
+              AMREX_OMP: "ON"
+              AMREX_SHARED: "ON"
+              WHEEL_ARCHFLAGS: "-msimd128 -pthread"
+              REPAIR_PYODIDE: 'pip install auditwheel-emscripten && pyodide auditwheel repair {wheel} --libdir "$(em-config CACHE)/sysroot/lib" -o {dest_dir}'
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          - name: WebAssembly (OpenMP, no SIMD)
+            os: ubuntu-24.04
+            arch: "wasm32"
+            host_python: "3.12"
+            platform: "pyodide"
+            build: "cp314-pyodide_wasm32"
+            patches: ".github/setup-py-crosscompile-impactx.patch"
+            publish: "false"
+            continue_on_error: true
+            env:
+              COMPUTE: "OMP"
+              SIMD: "OFF"
+              AMREX_OMP: "ON"
+              AMREX_SHARED: "ON"
+              WHEEL_ARCHFLAGS: "-pthread"
+              REPAIR_PYODIDE: 'pip install auditwheel-emscripten && pyodide auditwheel repair {wheel} --libdir "$(em-config CACHE)/sysroot/lib" -o {dest_dir}'
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          # Static-AMReX linkage probe: same as the shipped wheel but AMReX is
+          # statically linked into each extension. Expected to FAIL the interop
+          # smoke check (two AMReX runtimes) -- this is the CI demonstration that
+          # the shared side-module linkage above is required, not optional.
+          - name: WebAssembly (static AMReX probe)
+            os: ubuntu-24.04
+            arch: "wasm32"
+            host_python: "3.12"
+            platform: "pyodide"
+            build: "cp314-pyodide_wasm32"
+            patches: ".github/setup-py-crosscompile-impactx.patch"
+            publish: "false"
+            continue_on_error: true
+            env:
+              COMPUTE: "NOACC"
+              SIMD: "ON"
+              AMREX_OMP: "OFF"
+              AMREX_SHARED: "OFF"
+              WHEEL_ARCHFLAGS: "-msimd128"
+              REPAIR_PYODIDE: ""
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
+
     steps:
     - uses: actions/checkout@v4
       with:
@@ -122,55 +245,77 @@ jobs:
     - uses: actions/setup-python@v5
       name: Install Python
       with:
-        python-version: '3.11'
+        python-version: "${{ matrix.host_python || '3.11' }}"
 
     - name: Install cibuildwheel
       run: |
         python -m pip install --upgrade pip build setuptools[core] wheel
-        python -m pip install cibuildwheel==3.2.1
+        python -m pip install cibuildwheel==4.1.0
 
-#    # Patch: Fix versioning
-#    - name: Download Patch 1/2
-#      uses: suisei-cn/actions-download-file@818d6b7dc8fe73f2f924b6241f2b1134ca1377d9  # 1.6.0
-#      id: setupversion
-#      with:
-#        url: "https://github.com/openPMD/openPMD-api/pull/1680.patch"
-#        target: src/.patch/
-
-#    # Patch: PYBIND11_FINDPYTHON=ON
-#    - name: Download Patch 2/2
-#      uses: suisei-cn/actions-download-file@818d6b7dc8fe73f2f924b6241f2b1134ca1377d9  # 1.6.0
-#      id: setupfindpython
-#      with:
-#        url: "https://github.com/openPMD/openPMD-api/pull/1684.patch"
-#        target: src/.patch/
-
-#    - name: Apply Patches
-#      run: |
-#        cd src
-#        git apply --exclude=.github/workflows/windows.yml .patch/1680.patch
-#        git apply --exclude=cmake/dependencies/pybind11.cmake .patch/1684.patch
-#        git fetch
-#        git apply --exclude=setup.py -3 .patch/1684.patch
+    # Source patches not (yet) in the built release tag. Currently only the
+    # WASM cross-compile FindPython fix (ImpactX #1528), applied for the pyodide
+    # matrix rows via matrix.patches. Both pyAMReX and ImpactX already carry the
+    # if(EMSCRIPTEN) CMake bits at tag 26.06, so no dependency-pin override is
+    # needed: the whole superbuild stays version-matched at 26.06.
+    - name: Apply source patches
+      if: matrix.patches != ''
+      shell: bash
+      run: |
+        cd src
+        for p in ${{ matrix.patches }}; do
+          echo "Applying $p"
+          git apply --ignore-whitespace "$p"
+        done
 
     - name: Build wheel
       env:
+        # platform + selection (native defaults: auto / all archs / all builds)
+        CIBW_PLATFORM: "${{ matrix.platform || 'auto' }}"
+        CIBW_ARCHS: "${{ matrix.arch }}"
+        CIBW_BUILD: "${{ matrix.build || '*' }}"
         # (1) Disable PyPy (manylinux image: yum repo issues)
         #     https://github.com/pypa/manylinux/issues/899
         # (2) Disable musl until this AMReX TODO is fixed:
         #     https://github.com/AMReX-Codes/amrex/issues/4373
         CIBW_SKIP: "pp*-manylinux* *musllinux*"
-        CIBW_ARCHS: "${{ matrix.arch }}"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
-        # Install dependencies
+        # Install dependencies (per platform). WASM cross-compiles its C/C++
+        # deps in BEFORE_BUILD (see the matrix comment above).
         CIBW_BEFORE_BUILD_LINUX: bash -x .github/library_builders.sh
         CIBW_BEFORE_BUILD_MACOS: bash -x .github/library_builders.sh
+        CIBW_BEFORE_BUILD_PYODIDE: bash -x .github/library_builders.sh wasm
         CIBW_BEFORE_BUILD_WINDOWS: 'cmd /E:ON /V:ON /C .github\library_builders.bat'
         # for the openPMD-api build, CMake shall search for
         # static dependencies of HDF5 (see setup.py)
         # SIMD ('${{ matrix.env.SIMD }}') and the x86_64 march/mtune flags are set per matrix arch;
         # AMREX_SIMD drives the external AMReX build in library_builders.sh, IMPACTX_SIMD the wheel.
         CIBW_ENVIRONMENT: HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' IMPACTX_SIMD='${{ matrix.env.SIMD }}' AMREX_SIMD='${{ matrix.env.SIMD }}' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' ZLIB_USE_STATIC_LIBS='ON' PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
+        # WASM/Pyodide: NOACC|OMP x SIMD on|off per matrix row. MPI off; static
+        # HDF5/zlib live in the Emscripten sysroot; AMReX is built externally
+        # (library_builders.sh wasm) -- shared side module for the shipped wheel,
+        # static for the probe row (AMREX_SHARED). openPMD (HDF5) + FFT stay on.
+        # If openPMD's find_package(HDF5) trips on static HDF5's missing
+        # ZLIB::ZLIB, override openPMD with e.g.
+        #   IMPACTX_CMAKE_ImpactX_openpmd_branch='<ref-with-find_dependency(ZLIB)>'
+        # AMREX_SHARED drives whether library_builders.sh builds libamrex as a
+        # shared Emscripten side module (ON, the shipped wheel) or static (OFF,
+        # the linkage probe). IMPACTX_BUILD_SHARED_LIBS stays OFF: only AMReX is
+        # shared across the two extension modules; ABLASTR/libimpactx are used
+        # only by impactx and are embedded statically.
+        CIBW_ENVIRONMENT_PYODIDE: >
+          IMPACTX_AMREX_INTERNAL='OFF'
+          IMPACTX_COMPUTE='${{ matrix.env.COMPUTE }}'
+          IMPACTX_FFT='ON'
+          IMPACTX_MPI='OFF'
+          IMPACTX_SIMD='${{ matrix.env.SIMD }}'
+          IMPACTX_BUILD_SHARED_LIBS='OFF'
+          AMREX_SIMD='${{ matrix.env.SIMD }}'
+          AMREX_OMP='${{ matrix.env.AMREX_OMP }}'
+          AMREX_SHARED='${{ matrix.env.AMREX_SHARED }}'
+          HDF5_USE_STATIC_LIBRARIES='ON'
+          ZLIB_USE_STATIC_LIBS='ON'
+          CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
+          CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
         # ImpactX defaults Python IPO/LTO to ON unless CMAKE_INTERPROCEDURAL_OPTIMIZATION
         # is set explicitly. On Windows that ends up enabling /GL and /LTCG via pybind11,
         # which currently trips an MSVC ICE in src/python/WakeConvolution.cpp.
@@ -180,6 +325,9 @@ jobs:
         # cibuildwheel does not repair Windows wheels by default. Since pyAMReX links
         # against the shared AMReX runtime on Windows, vendor that DLL into the wheel.
         CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: 'delvewheel repair --add-path "C:\Program Files (x86)\AMReX\bin" -v -w {dest_dir} {wheel}'
+        # WASM: vendor the shared libamrex side module into the wheel with
+        # auditwheel-emscripten (shared rows); empty for the static probe row.
+        CIBW_REPAIR_WHEEL_COMMAND_PYODIDE: "${{ matrix.env.REPAIR_PYODIDE }}"
         CMAKE_BUILD_PARALLEL_LEVEL: "${{ matrix.env.CMAKE_BUILD_PARALLEL_LEVEL }}"
         # C++17 support in macOS 10.13+ (partial) and 10.14+ (std::visit) and 10.15+ (std::filesystem::path)
         #   https://cibuildwheel.readthedocs.io/en/stable/cpp_standards/#macos-and-deployment-target-versions
@@ -191,9 +339,18 @@ jobs:
         CMAKE_GENERATOR_PLATFORM: "${{ matrix.env.CMAKE_GENERATOR_PLATFORM }}"
         # Show a bit more output (pip -v)
         CIBW_BUILD_VERBOSITY: 1
-        # Testing of the final wheel
+        # Pre-import smoke test on every platform: dump the extension's
+        # (transitive) shared-library deps + flag unbundled ones, before the
+        # actual import test. On WASM the dep lister cannot introspect the wasm
+        # dylink section, so it is a best-effort diagnostic and wasm_smoke.py is
+        # the real gate: it imports impactx AND asserts the amrex<->impactx
+        # shared-AMReX-runtime interop (which the static probe row fails).
         CIBW_TEST_REQUIRES: pytest numpy pandas
-        CIBW_TEST_COMMAND: pytest {project}/tests/python/test_push.py
+        CIBW_TEST_COMMAND: python {project}/.github/check_wheel_libs.py && pytest {project}/tests/python/test_push.py
+        CIBW_TEST_REQUIRES_PYODIDE: numpy
+        CIBW_TEST_COMMAND_PYODIDE: >
+          python {project}/.github/check_wheel_libs.py || true;
+          python {project}/.github/wasm_smoke.py
       run: |
         cd src
         python -m pip install --upgrade pip build setuptools[core] wheel
@@ -206,12 +363,15 @@ jobs:
     - uses: actions/upload-artifact@v4
       name: Publish as GitHub artifact
       with:
-        name: wheels-${{ matrix.os }}-${{ matrix.arch }}
+        # strategy.job-index keeps the name unique across the multiple
+        # ubuntu-24.04/wasm32 exploration rows (same os+arch).
+        name: wheels-${{ matrix.os }}-${{ matrix.arch }}-${{ strategy.job-index }}
         path: ./wheelhouse
         overwrite: true
 
     - name: Publish on pypi.org
-      if: github.event_name == 'push' && github.repository == 'BLAST-ImpactX/impactx-wheels' && github.ref == 'refs/heads/wheels-noacc'
+      # experiment rows set publish="false"; everything else publishes
+      if: github.event_name == 'push' && github.repository == 'BLAST-ImpactX/impactx-wheels' && github.ref == 'refs/heads/wheels-noacc' && matrix.publish != 'false'
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.pypa_gh_action_upload }}
