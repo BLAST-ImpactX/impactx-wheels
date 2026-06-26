@@ -100,9 +100,6 @@ function build_amrex {
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
-    # ${EMCMAKE}/${EMMAKE} are empty for native and emcmake/emmake for WASM.
-    # AMREX_SHARED is ON for native (the wheel links the AMReX runtime) and OFF for
-    # WASM (statically linked into each extension module).
     PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \
       -S amrex                         \
       -B build-amrex                   \
