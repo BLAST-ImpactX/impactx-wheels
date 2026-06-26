@@ -14,7 +14,7 @@ the beam monitor with openpmd_api .to_df() then crosses the C++ <-> Python
 (numpy/pandas) boundary -- the path that segfaults when a wheel vendors a
 private MSVC C++ runtime on Windows (see check_no_vendored_runtime.py).
 
-The read-back needs scipy/pandas/openpmd-api, which have no 32-bit wheels; on
+The read-back needs pandas/openpmd-api, which have no 32-bit wheels; on
 platforms where they cannot be installed it is skipped (the example still runs).
 
 Usage:  python smoke_example.py
@@ -28,8 +28,8 @@ import numpy as np
 
 from impactx import ImpactX, distribution, elements
 
-_IMPORTS = ("openpmd_api", "scipy", "pandas")
-_PIP = ("openpmd-api", "scipy", "pandas")
+_IMPORTS = ("openpmd_api", "pandas")
+_PIP = ("openpmd-api", "pandas")
 
 
 def run_fodo():
@@ -79,7 +79,6 @@ def run_fodo():
 def analyze(npart):
     """Read the beam-monitor openPMD output back via openpmd_api + pandas."""
     import openpmd_api as io
-    from scipy.stats import moment
 
     series = io.Series("diags/openPMD/monitor.h5", io.Access.read_only)
     steps = list(series.iterations)
@@ -88,7 +87,7 @@ def analyze(npart):
 
     assert len(initial) == npart, len(initial)
     assert len(final) == npart, len(final)
-    sigx = moment(final["position_x"], moment=2) ** 0.5
+    sigx = final["position_x"].std()  # pandas/numpy; no fragile scipy API
     assert np.isfinite(sigx) and sigx > 0.0, sigx
     print("ImpactX+openPMD smoke OK: npart=%d steps=%d sigx=%e"
           % (npart, len(steps), sigx))
@@ -115,7 +114,7 @@ def main():
             check=False,
         )
     if not _have_imports():
-        print("smoke_example: scipy/pandas/openpmd-api unavailable, "
+        print("smoke_example: pandas/openpmd-api unavailable, "
               "skipping openPMD read-back")
         return 0
 
