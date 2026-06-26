@@ -235,8 +235,8 @@ jobs:
           CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF'
           CMAKE_PREFIX_PATH='C:\Program Files (x86)\AMReX;C:\Program Files (x86)\fftw;C:\Program Files (x86)\zlib'
         # pyAMReX links the shared AMReX runtime on Windows -> vendor that DLL,
-        # but --exclude the MSVC C++ runtime (delvewheel bundles it since cibw 4.0;
-        # a private copy collides with co-loaded C++ extensions -> heap corruption).
+        # but --exclude the MSVC C++ runtime: a private copy collides
+        # with co-loaded C++ extensions in other imports and causes heap corruption.
         # --exclude takes glob wildcards (delvewheel docs); unversioned families
         # stay correct across runtime updates / a future toolset (msvcp150, ...).
         CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >
