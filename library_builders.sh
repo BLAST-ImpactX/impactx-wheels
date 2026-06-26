@@ -88,6 +88,15 @@ function build_amrex {
     tar xzf amrex-${AMREX_VERSION}.tar.gz
     rm amrex*.tar.gz
 
+    # WASM: CMake marks the Emscripten platform as TARGET_SUPPORTS_SHARED_LIBS=
+    # FALSE, so AMReX's AMReXOptions.cmake aborts on AMReX_BUILD_SHARED_LIBS. We
+    # build libamrex as a deliberate Emscripten side module (-sSIDE_MODULE=1, see
+    # AMREX_SHARED_LINKER_FLAGS), so force the capability flag AMReX checks.
+    if [ -n "${EMCMAKE}" ] && [ "${AMREX_SHARED:-OFF}" = "ON" ]; then
+        sed -i 's|get_property(SHARED_LIBS_SUPPORTED GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)|&\n    set(SHARED_LIBS_SUPPORTED TRUE)  # WASM side-module override (impactx-wheels)|' \
+            amrex/Tools/CMake/AMReXOptions.cmake
+    fi
+
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
     # ${EMCMAKE}/${EMMAKE} are empty for native builds and emcmake/emmake for WASM.
