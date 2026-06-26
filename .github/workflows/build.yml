@@ -345,7 +345,10 @@ jobs:
         # dylink section, so it is a best-effort diagnostic and wasm_smoke.py is
         # the real gate: it imports impactx AND asserts the amrex<->impactx
         # shared-AMReX-runtime interop (which the static probe row fails).
-        CIBW_TEST_REQUIRES: pytest numpy pandas
+        # pandas is intentionally omitted: test_push.py does not use it (impactx
+        # imports pandas lazily) and it has no 32-bit Windows wheel, so pip would
+        # try to build it from source in the win32 test venv and fail.
+        CIBW_TEST_REQUIRES: pytest numpy
         CIBW_TEST_COMMAND: python {project}/.github/check_wheel_libs.py && pytest {project}/tests/python/test_push.py
         CIBW_TEST_REQUIRES_PYODIDE: numpy
         CIBW_TEST_COMMAND_PYODIDE: >
