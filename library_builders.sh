@@ -92,8 +92,8 @@ function build_amrex {
     rm amrex*.tar.gz
 
     # WASM: the wasm32 ABI has 4-byte pointers but 8-byte double, so AMReX's
-    # parser_number (alignas(parser_node)) underaligns its double. Upstream fix:
-    # AMReX-Codes/amrex#5515.
+    # parser_number (alignas(parser_node)) underaligns its double.
+    # Fixed in AMReX 26.07+ via https://github.com/AMReX-Codes/amrex/pull/5515
     if [ -n "${EMCMAKE}" ]; then
         patch -p1 -d amrex < .github/amrex-parser-alignment.patch
     fi

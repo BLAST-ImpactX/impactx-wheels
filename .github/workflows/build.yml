@@ -4,6 +4,9 @@ on: [push, pull_request]
 
 env:
   SRC_REF: '26.06'
+  # Patches applied to every leg (in addition to per-entry matrix.patches).
+  # Empty today; wired so a future release can carry a common source fix.
+  COMMON_PATCHES: ''
 
 jobs:
   build_wheels:
@@ -13,7 +16,6 @@ jobs:
       fail-fast: false
       matrix:
         # Per-entry knobs (all optional, sensible native defaults below):
-        #   host_python  cibuildwheel host interpreter (default 3.11)
         #   platform     CIBW_PLATFORM                 (default auto)
         #   build        CIBW_BUILD                    (default *, i.e. all)
         #   patches      space-separated setup patches (default: none)
@@ -40,12 +42,25 @@ jobs:
               SIMD: "ON"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
+          # builds faster on Travis-CI:
+          #- os: ubuntu-24.04
+          #  arch: "ppc64le"
+          #  env:
+          #    CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          # builds faster on Travis-CI:
+          # blocked by https://github.com/GTkorvo/dill/issues/15
+          #- os: ubuntu-24.04
+          #  arch: "s390x"
+          #  env:
+          #    CMAKE_BUILD_PARALLEL_LEVEL: 4
+
           # x86-64 (64bit)
           - os: windows-2022
             arch: "AMD64"
             env:
-              # Explicit vir-simd needs clang/gcc builtins, not MSVC -> SIMD OFF;
-              # still target AVX2 via MSVC codegen (scalar FMA + auto-vectorization).
+              # Explicit SIMD (vir-simd) needs clang/gcc builtins, not MSVC, so SIMD stays OFF.
+              # We still target AVX2 via MSVC codegen (/arch:AVX2): scalar FMA + auto-vectorization.
               SIMD: "OFF"
               WHEEL_ARCHFLAGS: "/arch:AVX2"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
@@ -88,7 +103,6 @@ jobs:
           # AMReX runtime at load (verified in CI), so no wheel-repair is needed.
           - os: ubuntu-24.04
             arch: "wasm32"
-            host_python: "3.12"   # cibuildwheel 4.x needs Python >= 3.11
             platform: "pyodide"
             build: "cp314-pyodide_wasm32"
             patches: ".github/setup-py-crosscompile-impactx.patch"
@@ -117,21 +131,20 @@ jobs:
     - uses: actions/setup-python@v6
       name: Install Python
       with:
-        python-version: "${{ matrix.host_python || '3.11' }}"
+        python-version: "3.12"
 
     - name: Install cibuildwheel
       run: |
         python -m pip install --upgrade pip build setuptools[core] wheel
         python -m pip install cibuildwheel==4.1.0
 
-    # Source patches not (yet) in the built release tag. Currently only the WASM
-    # cross-compile FindPython fix (ImpactX #1528), selected via matrix.patches.
+    # Source patches not (yet) in the built release tag.
+    # Applies all matrix.patches (if any), then the $COMMON_PATCHES.
     - name: Apply patches
-      if: matrix.patches != ''
       shell: bash
       run: |
         cd src
-        for p in ${{ matrix.patches }}; do
+        for p in ${{ matrix.patches }} $COMMON_PATCHES; do
           git apply --ignore-whitespace "$p"
         done
 
@@ -217,8 +230,9 @@ jobs:
         # Fully static link => pyodide needs no wheel-repair step
         CIBW_REPAIR_WHEEL_COMMAND_PYODIDE: ""
         CMAKE_BUILD_PARALLEL_LEVEL: "${{ matrix.env.CMAKE_BUILD_PARALLEL_LEVEL }}"
-        # C++17 on macOS: deployment target per arch (arm64 needs 11.0+)
+        # C++17 support in macOS 10.13+ (partial) and 10.14+ (std::visit) and 10.15+ (std::filesystem::path)
         #   https://cibuildwheel.readthedocs.io/en/stable/cpp_standards/#macos-and-deployment-target-versions
+        # arm64/aarch64 (M1/M2) requires 11.0+
         MACOSX_DEPLOYMENT_TARGET: "${{ matrix.env.MACOSX_DEPLOYMENT_TARGET }}"
         CMAKE_OSX_ARCHITECTURES: "${{ matrix.env.CMAKE_OSX_ARCHITECTURES }}"
         CMAKE_GENERATOR: "${{ matrix.env.CMAKE_GENERATOR }}"
