@@ -90,14 +90,12 @@ function build_amrex {
 
     # WASM/Emscripten source fixes for AMReX (no upstream emscripten support yet).
     if [ -n "${EMCMAKE}" ]; then
-        # (1) wasm32 ABI: pointers are 4 bytes but double needs 8-byte alignment.
-        #     parser_number is `alignas(parser_node)` (=4) yet contains a double,
-        #     so clang errors "requested alignment is less than minimum alignment
-        #     of 8". Bump the shared base parser_node to alignas(8) -> every
-        #     `alignas(parser_node)` parser struct becomes 8-aligned. (Native
-        #     32-bit x86 escapes this because double is 4-aligned there.)
-        sed -i 's|^struct parser_node {|struct alignas(8) parser_node {|' \
-            amrex/Src/Base/Parser/AMReX_Parser_Y.H
+        # (1) wasm32 ABI: pointers are 4 bytes but double needs 8-byte alignment,
+        #     so AMReX's parser_number (alignas(parser_node)) underaligns its
+        #     double. Upstream fix: AMReX PR #5515 aligns parser_node to
+        #     max(alignof(double*), alignof(double)). (Native 32-bit x86 escapes
+        #     this because double is 4-aligned there.)
+        patch -p1 -d amrex < .github/amrex-parser-alignment.patch
         # (2) CMake marks Emscripten TARGET_SUPPORTS_SHARED_LIBS=FALSE, so
         #     AMReXOptions.cmake aborts on AMReX_BUILD_SHARED_LIBS. We build
         #     libamrex as a deliberate side module (-sSIDE_MODULE=1, see
@@ -423,6 +421,25 @@ if [ "${1:-}" = "wasm" ]; then
         build_virsimd
     fi
     build_amrex
+
+    # WASM: static HDF5's CMake config exposes its zlib dependency in
+    # INTERFACE_LINK_LIBRARIES (as ZLIB::ZLIB) but omits find_dependency(ZLIB),
+    # so consumers (openPMD-api -> HDF5) drop libz and the final wheel link fails
+    # with undefined inflate/deflate/compress. Define ZLIB::ZLIB up front (points
+    # at the static zlib we built) and force it onto every target. ImpactX's
+    # setup.py wires this in via IMPACTX_CMAKE_CMAKE_PROJECT_TOP_LEVEL_INCLUDES.
+    # openPMD-api fixes this upstream in https://github.com/openPMD/openPMD-api/pull/1894
+    # (a release after 0.17.1); the fetched openPMD 0.17.0 here predates it.
+    cat > /tmp/impactx-zlibfix.cmake <<EOF
+find_package(ZLIB QUIET)
+if(NOT TARGET ZLIB::ZLIB)
+    add_library(ZLIB::ZLIB STATIC IMPORTED)
+    set_target_properties(ZLIB::ZLIB PROPERTIES
+        IMPORTED_LOCATION "${BUILD_PREFIX}/lib/libz.a"
+        INTERFACE_INCLUDE_DIRECTORIES "${BUILD_PREFIX}/include")
+endif()
+link_libraries(ZLIB::ZLIB)
+EOF
 else
     # Installation base path of all deps
     export BUILD_PREFIX="${BUILD_PREFIX:-/usr/local}"

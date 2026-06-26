@@ -18,10 +18,12 @@ jobs:
         #   patches      space-separated src patches   (default: none)
         #   publish      upload to PyPI?               (default: yes; "false" to skip)
         #   continue_on_error  job is a probe          (default: false)
+        #   sdist        also build + upload the sdist artifact (default: off)
         include:
           - name: 64bit Linux
             os: ubuntu-24.04
             arch: "x86_64"
+            sdist: true   # this reliable native leg also emits the sdist artifact
             env:
               SIMD: "ON"
               WHEEL_ARCHFLAGS: "-march=x86-64-v3 -mtune=generic"
@@ -227,13 +229,13 @@ jobs:
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         repository: 'BLAST-ImpactX/impactx'
         path: 'src'
         ref: '26.06'
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         path: 'src/.github/'
 
@@ -242,7 +244,7 @@ jobs:
         cp src/.github/README.md src/
         python src/.github/rename_package.py src/setup.py
 
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v6
       name: Install Python
       with:
         python-version: "${{ matrix.host_python || '3.11' }}"
@@ -266,6 +268,21 @@ jobs:
           echo "Applying $p"
           git apply --ignore-whitespace "$p"
         done
+
+    # In a separate directory, we want to upload it to PyPI last
+    - name: Build sdist
+      if: ${{ matrix.sdist }}
+      run: |
+        cd src
+        python setup.py -q sdist --dist-dir ../sdist
+
+    - uses: actions/upload-artifact@v7
+      name: Upload sdist as GitHub artifact
+      if: ${{ matrix.sdist }}
+      with:
+        name: sdist
+        path: ./sdist
+        overwrite: true
 
     - name: Build wheel
       env:
@@ -314,6 +331,7 @@ jobs:
           AMREX_SHARED='${{ matrix.env.AMREX_SHARED }}'
           HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
+          IMPACTX_CMAKE_CMAKE_PROJECT_TOP_LEVEL_INCLUDES='/tmp/impactx-zlibfix.cmake'
           CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
           CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
         # ImpactX defaults Python IPO/LTO to ON unless CMAKE_INTERPROCEDURAL_OPTIMIZATION
@@ -360,10 +378,7 @@ jobs:
         python -m pip install --upgrade cmake
         python -m cibuildwheel --output-dir ../wheelhouse
 
-      # note - intentionally skipping a source package
-      # python setup.py sdist --dist-dir ../wheelhouse
-
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       name: Publish as GitHub artifact
       with:
         # strategy.job-index keeps the name unique across the multiple
@@ -375,6 +390,32 @@ jobs:
     - name: Publish on pypi.org
       # experiment rows set publish="false"; everything else publishes
       if: github.event_name == 'push' && github.repository == 'BLAST-ImpactX/impactx-wheels' && github.ref == 'refs/heads/wheels-noacc' && matrix.publish != 'false'
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.pypa_gh_action_upload }}
+      run: |
+        python -m pip install -U twine
+        python -m twine upload --skip-existing wheelhouse/*
+
+  # Publish the sdist last, so downstream user's and CI do not race for it
+  # before all binary wheels are published.
+  publish_sdist:
+    name: Publish sdist (last)
+    needs: [build_wheels]
+    runs-on: ubuntu-24.04
+    if: ${{ !cancelled() && github.event_name == 'push' && github.repository == 'BLAST-ImpactX/impactx-wheels' && github.ref == 'refs/heads/wheels-noacc' }}
+    steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: sdist
+        path: ./wheelhouse
+
+    - uses: actions/setup-python@v6
+      name: Install Python
+      with:
+        python-version: "3.14"
+
+    - name: Publish on pypi.org
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.pypa_gh_action_upload }}
