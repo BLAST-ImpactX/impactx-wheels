@@ -14,12 +14,19 @@ the beam monitor with openpmd_api .to_df() then crosses the C++ <-> Python
 (numpy/pandas) boundary -- the path that segfaults when a wheel vendors a
 private MSVC C++ runtime on Windows (see check_no_vendored_runtime.py).
 
+On macOS importing openpmd_api after impactx currently aborts (duplicate
+bundled native libs under dyld); _macos_backtrace() captures a native lldb
+backtrace before we hit it in-process, and faulthandler dumps the Python frame.
+
 The read-back needs pandas/openpmd-api, which have no 32-bit wheels; on
 platforms where they cannot be installed it is skipped (the example still runs).
 
 Usage:  python smoke_example.py
 """
+import faulthandler
+import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -27,6 +34,8 @@ import tempfile
 import numpy as np
 
 from impactx import ImpactX, distribution, elements
+
+faulthandler.enable()
 
 _IMPORTS = ("openpmd_api", "pandas")
 _PIP = ("openpmd-api", "pandas")
@@ -93,13 +102,26 @@ def analyze(npart):
           % (npart, len(steps), sigx))
 
 
-def _have_imports():
-    try:
-        for m in _IMPORTS:
-            __import__(m)
-        return True
-    except ImportError:
-        return False
+def _installed(mods):
+    # find_spec checks availability WITHOUT importing (executing) the C
+    # extension; importing openpmd_api after impactx aborts on macOS, and we
+    # want _macos_backtrace() to capture that first.
+    return all(importlib.util.find_spec(m) is not None for m in mods)
+
+
+def _macos_backtrace():
+    """macOS: capture a native lldb backtrace of the impactx + openpmd_api
+    co-load abort (the missing piece to debug it). No-op elsewhere / no lldb."""
+    if sys.platform != "darwin" or not shutil.which("lldb"):
+        return
+    print("=== lldb backtrace: import impactx; import openpmd_api ===", flush=True)
+    subprocess.run(
+        ["lldb", "-b", "-o", "run", "-o", "bt all", "-o", "quit", "--",
+         sys.executable, "-c",
+         "import impactx; import openpmd_api; print('co-load OK')"],
+        check=False,
+    )
+    print("=== end lldb backtrace ===", flush=True)
 
 
 def main():
@@ -108,17 +130,18 @@ def main():
 
     # The openPMD read-back deps have no 32-bit wheels; --only-binary avoids a
     # slow source build there. If still unavailable, skip the read-back.
-    if not _have_imports():
+    if not _installed(_IMPORTS):
         subprocess.run(
             [sys.executable, "-m", "pip", "install", "-q", "--only-binary=:all:", *_PIP],
             check=False,
         )
-    if not _have_imports():
+    if not _installed(_IMPORTS):
         print("smoke_example: pandas/openpmd-api unavailable, "
               "skipping openPMD read-back")
         return 0
 
-    analyze(npart)
+    _macos_backtrace()  # diagnostic before the in-process co-load below
+    analyze(npart)      # imports openpmd_api in-process (aborts on macOS today)
     return 0
 
 
