@@ -252,10 +252,10 @@ jobs:
         CMAKE_GENERATOR_PLATFORM: "${{ matrix.env.CMAKE_GENERATOR_PLATFORM }}"
         # Smoke test: shared-lib deps (check_wheel_libs.py), the push unit test,
         # and smoke_example.py (runs a FODO example + reads its openPMD monitor
-        # with openpmd_api co-loaded in-process). 32-bit lacks scipy/pandas wheels.
+        # with openpmd_api co-loaded in-process; it installs/skips its own
+        # scipy/pandas/openpmd-api read-back deps, which have no 32-bit wheels).
         # Pyodide runs in a node sandbox -> best-effort `|| true`; native uses &&.
-        CIBW_TEST_REQUIRES: pytest numpy scipy pandas openpmd-api
-        CIBW_TEST_SKIP: "*-win32 *_i686"
+        CIBW_TEST_REQUIRES: pytest numpy
         CIBW_TEST_COMMAND: >
           python {project}/.github/check_wheel_libs.py &&
           pytest {project}/tests/python/test_push.py &&

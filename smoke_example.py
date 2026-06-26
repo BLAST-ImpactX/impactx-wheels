@@ -8,23 +8,28 @@
 """Functional smoke test: run an ImpactX FODO example and analyze its openPMD
 beam-monitor diagnostics -- in ONE process.
 
-Importing impactx AND openpmd_api together verifies that the two PyPI wheels
-(each shipping compiled C++) load and run in the same process. Reading the beam
-monitor with openpmd_api .to_df() then crosses the C++ <-> Python (numpy/pandas)
-boundary -- the path that segfaults when a wheel vendors a private MSVC C++
-runtime on Windows (see check_no_vendored_runtime.py).
+Running impactx and importing openpmd_api together verifies that the two PyPI
+wheels (each shipping compiled C++) load and run in the same process. Reading
+the beam monitor with openpmd_api .to_df() then crosses the C++ <-> Python
+(numpy/pandas) boundary -- the path that segfaults when a wheel vendors a
+private MSVC C++ runtime on Windows (see check_no_vendored_runtime.py).
+
+The read-back needs scipy/pandas/openpmd-api, which have no 32-bit wheels; on
+platforms where they cannot be installed it is skipped (the example still runs).
 
 Usage:  python smoke_example.py
 """
 import os
+import subprocess
 import sys
 import tempfile
 
 import numpy as np
-import openpmd_api as io  # co-load the openPMD-api wheel alongside impactx
-from scipy.stats import moment
 
 from impactx import ImpactX, distribution, elements
+
+_IMPORTS = ("openpmd_api", "scipy", "pandas")
+_PIP = ("openpmd-api", "scipy", "pandas")
 
 
 def run_fodo():
@@ -73,6 +78,9 @@ def run_fodo():
 
 def analyze(npart):
     """Read the beam-monitor openPMD output back via openpmd_api + pandas."""
+    import openpmd_api as io
+    from scipy.stats import moment
+
     series = io.Series("diags/openPMD/monitor.h5", io.Access.read_only)
     steps = list(series.iterations)
     initial = series.iterations[steps[0]].particles["beam"].to_df()
@@ -86,10 +94,32 @@ def analyze(npart):
           % (npart, len(steps), sigx))
 
 
+def _have_imports():
+    try:
+        for m in _IMPORTS:
+            __import__(m)
+        return True
+    except ImportError:
+        return False
+
+
 def main():
-    print("co-loaded impactx with openpmd_api", io.__version__)
     os.chdir(tempfile.mkdtemp(prefix="impactx-smoke-"))  # diags/ go here
-    analyze(run_fodo())
+    npart = run_fodo()
+
+    # The openPMD read-back deps have no 32-bit wheels; --only-binary avoids a
+    # slow source build there. If still unavailable, skip the read-back.
+    if not _have_imports():
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-q", "--only-binary=:all:", *_PIP],
+            check=False,
+        )
+    if not _have_imports():
+        print("smoke_example: scipy/pandas/openpmd-api unavailable, "
+              "skipping openPMD read-back")
+        return 0
+
+    analyze(npart)
     return 0
 
 
