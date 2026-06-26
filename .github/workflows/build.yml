@@ -234,8 +234,12 @@ jobs:
           CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
           CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF'
           CMAKE_PREFIX_PATH='C:\Program Files (x86)\AMReX;C:\Program Files (x86)\fftw;C:\Program Files (x86)\zlib'
-        # pyAMReX links the shared AMReX runtime on Windows -> vendor that DLL.
-        CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: 'delvewheel repair --add-path "C:\Program Files (x86)\AMReX\bin" -v -w {dest_dir} {wheel}'
+        # pyAMReX links the shared AMReX runtime on Windows -> vendor that DLL,
+        # but --exclude the MSVC C++ runtime (delvewheel bundles it since cibw 4.0;
+        # a private copy collides with co-loaded C++ extensions -> heap corruption).
+        CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >
+          delvewheel repair --add-path "C:\Program Files (x86)\AMReX\bin" -v -w {dest_dir} {wheel}
+          --exclude "msvcp140.dll;msvcp140_1.dll;msvcp140_2.dll;msvcp140_atomic_wait.dll;msvcp140_codecvt_ids.dll;vcruntime140.dll;vcruntime140_1.dll;concrt140.dll;vccorlib140.dll;vcomp140.dll;vcamp140.dll"
         # Fully static link => pyodide needs no wheel-repair step
         CIBW_REPAIR_WHEEL_COMMAND_PYODIDE: ""
         CMAKE_BUILD_PARALLEL_LEVEL: "${{ matrix.env.CMAKE_BUILD_PARALLEL_LEVEL }}"
@@ -246,13 +250,16 @@ jobs:
         CMAKE_OSX_ARCHITECTURES: "${{ matrix.env.CMAKE_OSX_ARCHITECTURES }}"
         CMAKE_GENERATOR: "${{ matrix.env.CMAKE_GENERATOR }}"
         CMAKE_GENERATOR_PLATFORM: "${{ matrix.env.CMAKE_GENERATOR_PLATFORM }}"
-        # Pre-import smoke test: dump the extension's (transitive) shared-library
-        # dependencies (check_wheel_libs.py), then import and run a small push.
+        # Smoke test: shared-lib deps (check_wheel_libs.py), the push unit test,
+        # and smoke_example.py (runs a FODO example + reads its openPMD monitor
+        # with openpmd_api co-loaded in-process). 32-bit lacks scipy/pandas wheels.
         # Pyodide runs in a node sandbox -> best-effort `|| true`; native uses &&.
-        CIBW_TEST_REQUIRES: pytest numpy
+        CIBW_TEST_REQUIRES: pytest numpy scipy pandas openpmd-api
+        CIBW_TEST_SKIP: "*-win32 *_i686"
         CIBW_TEST_COMMAND: >
           python {project}/.github/check_wheel_libs.py &&
-          pytest {project}/tests/python/test_push.py
+          pytest {project}/tests/python/test_push.py &&
+          python {project}/.github/smoke_example.py
         CIBW_TEST_REQUIRES_PYODIDE: numpy
         CIBW_TEST_COMMAND_PYODIDE: >
           python {project}/.github/check_wheel_libs.py || true;
@@ -271,6 +278,14 @@ jobs:
         name: wheels-${{ matrix.os }}-${{ matrix.arch }}
         path: ./wheelhouse
         overwrite: true
+
+    - name: Check wheels do not vendor the VC++ runtime
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        for whl in wheelhouse/*.whl; do
+          python src/.github/check_no_vendored_runtime.py "$whl"
+        done
 
     - name: Publish on pypi.org
       if: github.event_name == 'push' && github.repository == 'BLAST-ImpactX/impactx-wheels' && github.ref == 'refs/heads/wheels-noacc'
