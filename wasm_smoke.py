@@ -8,11 +8,11 @@
 """WASM/Pyodide smoke test + micro-benchmark for the ImpactX wheel.
 
 The import of ``impactx`` is the real pass/fail gate (it loads the compiled
-wasm extension and all statically-linked deps). On top of that we run a small
-self-contained tracking problem and print the wall-clock time, so that across
-the SIMD-on/off CI matrix the ``BENCH ...`` log lines let us compare whether
-WebAssembly SIMD actually speeds up a cheap linear element vs a compute-bound
-(nonlinear, transcendental-heavy) one.
+wasm extension and all statically-linked deps) and the interop check confirms
+the `amrex` and `impactx` modules share one AMReX runtime. On top of that we
+time a cheap linear element vs a compute-bound (nonlinear, transcendental-heavy)
+one; the ``BENCH ...`` log lines are a runtime sanity check and let us re-measure
+the SIMD trade-off (WASM SIMD is slower here, so the shipped wheel is scalar).
 
 Kept single-threaded and free of file output so it runs inside the cibuildwheel
 Node/Pyodide sandbox. Usage:

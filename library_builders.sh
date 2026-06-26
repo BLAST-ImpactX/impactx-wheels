@@ -13,6 +13,9 @@ else
     SUDO=""
 fi
 
+# Common curl options: retry transient network/mirror failures (used everywhere).
+CURL_RETRY="--retry 5 --retry-delay 3"
+
 function install_buildessentials {
     if [ -e buildessentials-stamp ]; then return; fi
 
@@ -44,7 +47,7 @@ function install_buildessentials {
         if [ $CMAKE_FOUND -ne 0 ]
         then
           yum -y install openssl-devel
-          curl -sLo cmake-3.17.1.tar.gz \
+          curl ${CURL_RETRY} -fsSL -o cmake-3.17.1.tar.gz \
               https://github.com/Kitware/CMake/releases/download/v3.17.1/cmake-3.17.1.tar.gz
           tar -xzf cmake-*.gz
           cd cmake-*
@@ -58,8 +61,7 @@ function install_buildessentials {
           rm cmake-*.tar.gz
         fi
 
-        # manylinux: avoid picking up a static libpthread in blosc
-        # (also: those libs lack -fPIC)
+        # manylinux: avoid picking up a static libpthread (also: lacks -fPIC)
         rm -f /usr/lib/libpthread.a   /usr/lib/libm.a   /usr/lib/librt.a
         rm -f /usr/lib64/libpthread.a /usr/lib64/libm.a /usr/lib64/librt.a
     fi
@@ -83,25 +85,24 @@ function build_amrex {
 
     AMREX_VERSION="26.06"
 
-    curl -sLO https://github.com/AMReX-Codes/amrex/releases/download/${AMREX_VERSION}/amrex-${AMREX_VERSION}.tar.gz
+    curl ${CURL_RETRY} -fsSL -o amrex-${AMREX_VERSION}.tar.gz \
+        https://github.com/AMReX-Codes/amrex/releases/download/${AMREX_VERSION}/amrex-${AMREX_VERSION}.tar.gz
     file amrex*.tar.gz
     tar xzf amrex-${AMREX_VERSION}.tar.gz
     rm amrex*.tar.gz
 
-    # WASM/Emscripten source fix for AMReX (no upstream emscripten support yet):
-    # wasm32 ABI has 4-byte pointers but 8-byte double, so AMReX's parser_number
-    # (alignas(parser_node)) underaligns its double. Upstream fix AMReX PR #5515
-    # aligns parser_node to max(alignof(double*), alignof(double)). (Native 32-bit
-    # x86 escapes this because double is 4-aligned there.)
+    # WASM: the wasm32 ABI has 4-byte pointers but 8-byte double, so AMReX's
+    # parser_number (alignas(parser_node)) underaligns its double. Upstream fix:
+    # AMReX-Codes/amrex#5515.
     if [ -n "${EMCMAKE}" ]; then
         patch -p1 -d amrex < .github/amrex-parser-alignment.patch
     fi
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
-    # ${EMCMAKE}/${EMMAKE} are empty for native builds and emcmake/emmake for WASM.
-    # AMREX_SHARED is ON for native (wheel links the AMReX runtime), OFF for WASM
-    # (everything is statically linked into a single wasm module).
+    # ${EMCMAKE}/${EMMAKE} are empty for native and emcmake/emmake for WASM.
+    # AMREX_SHARED is ON for native (the wheel links the AMReX runtime) and OFF for
+    # WASM (statically linked into each extension module).
     PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \
       -S amrex                         \
       -B build-amrex                   \
@@ -112,7 +113,7 @@ function build_amrex {
       -DAMReX_FORTRAN=OFF              \
       -DAMReX_FORTRAN_INTERFACES=OFF   \
       -DAMReX_GPU_BACKEND=NONE         \
-      -DAMReX_OMP=${AMREX_OMP:-OFF}    \
+      -DAMReX_OMP=OFF                  \
       -DAMReX_LINEAR_SOLVERS_EM=ON     \
       -DAMReX_LINEAR_SOLVERS_INCFLO=ON \
       -DAMReX_MPI=OFF                  \
@@ -141,49 +142,31 @@ function build_fftw {
 
     FFTW_VERSION="3.3.10"
 
-    curl -sLO https://www.fftw.org/fftw-$FFTW_VERSION.tar.gz
+    curl ${CURL_RETRY} -fsSL -o fftw-$FFTW_VERSION.tar.gz \
+        https://www.fftw.org/fftw-$FFTW_VERSION.tar.gz
     file fftw*.tar.gz
     tar xzf fftw-$FFTW_VERSION.tar.gz
     rm fftw*.tar.gz
 
-    # DOUBLE
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
-    PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \
-      -S fftw-*                  \
-      -B build-fftw              \
-      -DBUILD_SHARED_LIBS=OFF    \
-      -DBUILD_TESTS=OFF          \
-      -DDISABLE_FORTRAN=ON       \
-      -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
-      -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-
-    PATH=${CMAKE_BIN}:${PATH} ${EMMAKE} cmake --build build-fftw --parallel ${CPU_COUNT}
-    PATH=${CMAKE_BIN}:${PATH} ${SUDO} ${EMMAKE} cmake --build build-fftw --target install
-
-    rm -rf build-fftw
-
-    # SINGLE
-    PY_BIN=$(which python3)
-    CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
-    PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \
-      -S fftw-*                  \
-      -B build-fftw              \
-      -DBUILD_SHARED_LIBS=OFF    \
-      -DBUILD_TESTS=OFF          \
-      -DDISABLE_FORTRAN=ON       \
-      -DENABLE_FLOAT=ON          \
-      -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
-      -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-
-    PATH=${CMAKE_BIN}:${PATH} ${EMMAKE} cmake --build build-fftw --parallel ${CPU_COUNT}
-    PATH=${CMAKE_BIN}:${PATH} ${SUDO} ${EMMAKE} cmake --build build-fftw --target install
-
-    rm -rf build-fftw
+    # double and single precision; ${EMCMAKE}/${EMMAKE} empty for native, set for WASM
+    for fftw_float in "" "-DENABLE_FLOAT=ON"; do
+        PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \
+          -S fftw-*                  \
+          -B build-fftw              \
+          -DBUILD_SHARED_LIBS=OFF    \
+          -DBUILD_TESTS=OFF          \
+          -DDISABLE_FORTRAN=ON       \
+          ${fftw_float}              \
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        PATH=${CMAKE_BIN}:${PATH} ${EMMAKE} cmake --build build-fftw --parallel ${CPU_COUNT}
+        PATH=${CMAKE_BIN}:${PATH} ${SUDO} ${EMMAKE} cmake --build build-fftw --target install
+        rm -rf build-fftw
+    done
 
     touch fftw-stamp
 }
@@ -191,7 +174,7 @@ function build_fftw {
 function build_hdf5 {
     if [ -e hdf5-stamp ]; then return; fi
 
-    curl -sLo hdf5-1.12.2.tar.gz \
+    curl ${CURL_RETRY} -fsSL -o hdf5-1.12.2.tar.gz \
         https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.12/hdf5-1.12.2/src/hdf5-1.12.2.tar.gz
     file hdf5*.tar.gz
     tar -xzf hdf5*.tar.gz
@@ -216,11 +199,11 @@ function build_hdf5 {
 
         HOST_ARG="--host=aarch64-apple-darwin"
 
-        curl -sLo osx_cross_configure.patch \
+        curl ${CURL_RETRY} -fsSL -o osx_cross_configure.patch \
             https://raw.githubusercontent.com/h5py/h5py/fcaca1d1b81d25c0d83b11d5bdf497469b5980e9/ci/osx_cross_configure.patch
         python3 -m patch -p 0 -d . osx_cross_configure.patch
 
-        curl -sLo osx_cross_src_makefile.patch \
+        curl ${CURL_RETRY} -fsSL -o osx_cross_src_makefile.patch \
             https://raw.githubusercontent.com/h5py/h5py/fcaca1d1b81d25c0d83b11d5bdf497469b5980e9/ci/osx_cross_src_makefile.patch
         #python3 -m patch -p 0 -d . osx_cross_src_makefile.patch
         patch -p 0 < osx_cross_src_makefile.patch
@@ -270,14 +253,14 @@ function build_hdf5_cmake {
     # pinned libhdf5-wasm revision the FE_INVALID patch is fetched from
     LIBHDF5_WASM_REF="2069e0a2ab8073a1b7f08a10adae0ce6d73905fe"
 
-    curl -sLo hdf5-${HDF5_VERSION}.tar.gz \
+    curl ${CURL_RETRY} -fsSL -o hdf5-${HDF5_VERSION}.tar.gz \
         https://github.com/HDFGroup/hdf5/releases/download/hdf5_${HDF5_VERSION}/hdf5-${HDF5_VERSION}.tar.gz
     file hdf5*.tar.gz
     tar -xzf hdf5*.tar.gz
     rm hdf5*.tar.gz
 
     # Emscripten's <fenv.h> may not define FE_INVALID; guard feclearexcept().
-    curl -sLo hdf5-${HDF5_VERSION}/FE_INVALID.patch \
+    curl ${CURL_RETRY} -fsSL -o hdf5-${HDF5_VERSION}/FE_INVALID.patch \
         https://raw.githubusercontent.com/usnistgov/libhdf5-wasm/${LIBHDF5_WASM_REF}/patches/${HDF5_VERSION}/FE_INVALID.patch
     ( cd hdf5-${HDF5_VERSION} && patch -p1 < FE_INVALID.patch )
 
@@ -307,8 +290,8 @@ function build_hdf5_cmake {
         -DZLIB_USE_STATIC_LIBS=ON                      \
         -DH5_HAVE_GETPWUID=OFF                         \
         -DH5_HAVE_SIGNAL=OFF
-    PATH=${CMAKE_BIN}:${PATH} emmake cmake --build build-hdf5 --parallel ${CPU_COUNT}
-    PATH=${CMAKE_BIN}:${PATH} emmake cmake --build build-hdf5 --target install
+    emmake cmake --build build-hdf5 --parallel ${CPU_COUNT}
+    emmake cmake --build build-hdf5 --target install
 
     rm -rf build-hdf5
 
@@ -320,19 +303,19 @@ function build_zlib {
 
     ZLIB_VERSION="1.3.1"
 
-    curl -sLO https://github.com/madler/zlib/archive/refs/tags/v${ZLIB_VERSION}.tar.gz
-    file v${ZLIB_VERSION}.tar.gz
-    tar xzf v${ZLIB_VERSION}.tar.gz
-    rm v${ZLIB_VERSION}.tar.gz
+    # GitHub release mirror (zlib.net/fossils is flaky and serves HTML on error)
+    curl ${CURL_RETRY} -fsSL -o zlib-$ZLIB_VERSION.tar.gz \
+        https://github.com/madler/zlib/releases/download/v$ZLIB_VERSION/zlib-$ZLIB_VERSION.tar.gz
+    file zlib*.tar.gz
+    tar xzf zlib-$ZLIB_VERSION.tar.gz
+    rm zlib*.tar.gz
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
-    # zlib always builds BOTH a shared (zlib) and a static (zlibstatic) target,
-    # both named libz. Emscripten has no shared-lib support, so the shared one is
-    # downgraded to a static archive: both then write libz.a and race under a
-    # parallel build (llvm-ranlib: "unable to load 'libz.a'"). Serialize the WASM
-    # zlib build (${EMMAKE} non-empty) and skip the unused example/minigzip
-    # executables (they also link libz.a).
+    # zlib builds both a shared (zlib) and a static (zlibstatic) target, both
+    # named libz. On WASM the shared one is downgraded to a static archive, so
+    # both write libz.a and race a parallel build -> serialize it on WASM and
+    # skip the unused example/minigzip executables.
     ZLIB_NPROC="${CPU_COUNT}"
     [ -n "${EMMAKE}" ] && ZLIB_NPROC=1
     # ${EMCMAKE}/${EMMAKE} are empty for native builds and emcmake/emmake for WASM
@@ -360,20 +343,21 @@ function build_virsimd {
 
     VIRSIMD_VERSION="0.4.4"
 
-    curl -sLO https://github.com/mattkretz/vir-simd/archive/refs/tags/v${VIRSIMD_VERSION}.tar.gz
-    file v${VIRSIMD_VERSION}.tar.gz
-    tar xzf v${VIRSIMD_VERSION}.tar.gz
-    rm v${VIRSIMD_VERSION}.tar.gz
+    curl ${CURL_RETRY} -fsSL -o vir-simd-$VIRSIMD_VERSION.tar.gz \
+        https://github.com/mattkretz/vir-simd/archive/refs/tags/v${VIRSIMD_VERSION}.tar.gz
+    file vir-simd*.tar.gz
+    tar xzf vir-simd-$VIRSIMD_VERSION.tar.gz
+    rm vir-simd*.tar.gz
 
     # header-only: configure + install only (no compilation)
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
-    PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \
+    PATH=${CMAKE_BIN}:${PATH} cmake \
       -S vir-simd-${VIRSIMD_VERSION} \
       -B build-virsimd \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-    PATH=${CMAKE_BIN}:${PATH} ${SUDO} ${EMMAKE} cmake --build build-virsimd --target install
+    ${SUDO} cmake --build build-virsimd --target install
 
     rm -rf build-virsimd
 
@@ -391,32 +375,25 @@ if [ "${1:-}" = "wasm" ]; then
     export EMCMAKE="emcmake"
     export EMMAKE="emmake"
 
-    # AMReX is linked statically into BOTH the `amrex` (pyAMReX) and `impactx`
-    # extension modules. Unlike native (where two DSOs would each get their own
-    # AMReX globals), Emscripten side modules share ONE global symbol table, so
-    # the two modules resolve to a single AMReX runtime at load time -- verified
-    # in CI (amrex.initialized() is True after impactx init). A real shared
-    # libamrex.so is neither produced (Emscripten/CMake downgrades shared->static
-    # here) nor needed; fully static => no wheel-repair/vendoring step.
+    # AMReX is linked statically into both the `amrex` and `impactx` modules. On
+    # WASM this still yields ONE AMReX runtime: Pyodide loads the extensions as
+    # Emscripten side modules into a global (RTLD_GLOBAL-style) namespace, so the
+    # duplicated AMReX symbols are interposed to a single definition at load
+    # (verified in CI: amrex.initialized() is True after impactx init). Fully
+    # static => no wheel-repair step.
     export AMREX_SHARED="OFF"
 
     install_pyessentials
     build_zlib
     build_hdf5_cmake
     build_fftw
-    if [ "${AMREX_SIMD:-OFF}" = "ON" ]; then
-        build_virsimd
-    fi
     build_amrex
 
-    # WASM: static HDF5's CMake config exposes its zlib dependency in
-    # INTERFACE_LINK_LIBRARIES (as ZLIB::ZLIB) but omits find_dependency(ZLIB),
-    # so consumers (openPMD-api -> HDF5) drop libz and the final wheel link fails
-    # with undefined inflate/deflate/compress. Define ZLIB::ZLIB up front (points
-    # at the static zlib we built) and force it onto every target. ImpactX's
-    # setup.py wires this in via IMPACTX_CMAKE_CMAKE_PROJECT_TOP_LEVEL_INCLUDES.
-    # openPMD-api fixes this upstream in https://github.com/openPMD/openPMD-api/pull/1894
-    # (a release after 0.17.1); the fetched openPMD 0.17.0 here predates it.
+    # Static HDF5's CMake config exposes its zlib dependency (ZLIB::ZLIB) but
+    # omits find_dependency(ZLIB), so the final wheel link would drop libz. Define
+    # ZLIB::ZLIB and force it onto every target; ImpactX setup.py picks this up via
+    # IMPACTX_CMAKE_CMAKE_PROJECT_TOP_LEVEL_INCLUDES. Fixed upstream in
+    # openPMD-api#1894 (the fetched openPMD 0.17.0 predates it).
     cat > /tmp/impactx-zlibfix.cmake <<EOF
 find_package(ZLIB QUIET)
 if(NOT TARGET ZLIB::ZLIB)
@@ -457,6 +434,7 @@ else
     build_fftw
     build_zlib
     build_hdf5
+    # explicit SIMD (vir-simd) is requested per-arch via AMREX_SIMD
     if [ "${AMREX_SIMD:-OFF}" = "ON" ]; then
         build_virsimd
     fi
