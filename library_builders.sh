@@ -88,22 +88,13 @@ function build_amrex {
     tar xzf amrex-${AMREX_VERSION}.tar.gz
     rm amrex*.tar.gz
 
-    # WASM/Emscripten source fixes for AMReX (no upstream emscripten support yet).
+    # WASM/Emscripten source fix for AMReX (no upstream emscripten support yet):
+    # wasm32 ABI has 4-byte pointers but 8-byte double, so AMReX's parser_number
+    # (alignas(parser_node)) underaligns its double. Upstream fix AMReX PR #5515
+    # aligns parser_node to max(alignof(double*), alignof(double)). (Native 32-bit
+    # x86 escapes this because double is 4-aligned there.)
     if [ -n "${EMCMAKE}" ]; then
-        # (1) wasm32 ABI: pointers are 4 bytes but double needs 8-byte alignment,
-        #     so AMReX's parser_number (alignas(parser_node)) underaligns its
-        #     double. Upstream fix: AMReX PR #5515 aligns parser_node to
-        #     max(alignof(double*), alignof(double)). (Native 32-bit x86 escapes
-        #     this because double is 4-aligned there.)
         patch -p1 -d amrex < .github/amrex-parser-alignment.patch
-        # (2) CMake marks Emscripten TARGET_SUPPORTS_SHARED_LIBS=FALSE, so
-        #     AMReXOptions.cmake aborts on AMReX_BUILD_SHARED_LIBS. We build
-        #     libamrex as a deliberate side module (-sSIDE_MODULE=1, see
-        #     AMREX_SHARED_LINKER_FLAGS); force the capability flag AMReX checks.
-        if [ "${AMREX_SHARED:-OFF}" = "ON" ]; then
-            sed -i 's|get_property(SHARED_LIBS_SUPPORTED GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)|&\n    set(SHARED_LIBS_SUPPORTED TRUE)  # WASM side-module override (impactx-wheels)|' \
-                amrex/Tools/CMake/AMReXOptions.cmake
-        fi
     fi
 
     PY_BIN=$(which python3)
@@ -134,7 +125,6 @@ function build_amrex {
       -DAMReX_BUILD_SHARED_LIBS=${AMREX_SHARED:-ON} \
       -DBUILD_SHARED_LIBS=OFF          \
       -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-      -DCMAKE_SHARED_LINKER_FLAGS="${AMREX_SHARED_LINKER_FLAGS:-}" \
       -DCMAKE_BUILD_TYPE=Release       \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}
 
@@ -401,17 +391,14 @@ if [ "${1:-}" = "wasm" ]; then
     export EMCMAKE="emcmake"
     export EMMAKE="emmake"
 
-    # AMReX linkage (driven by the CI matrix, default static):
-    #   ON  -> build libamrex as a true Emscripten side module (-sSIDE_MODULE)
-    #          so the `amrex` (pyAMReX) and `impactx` extension modules share
-    #          ONE AMReX runtime (singletons + RTTI/pybind type registry).
-    #          auditwheel-emscripten then vendors libamrex*.so into the wheel.
-    #   OFF -> static AMReX in each module (probe: reproduces the duplicate-
-    #          globals breakage when objects cross the module boundary).
-    export AMREX_SHARED="${AMREX_SHARED:-OFF}"
-    if [ "${AMREX_SHARED}" = "ON" ]; then
-        export AMREX_SHARED_LINKER_FLAGS="-sSIDE_MODULE=1"
-    fi
+    # AMReX is linked statically into BOTH the `amrex` (pyAMReX) and `impactx`
+    # extension modules. Unlike native (where two DSOs would each get their own
+    # AMReX globals), Emscripten side modules share ONE global symbol table, so
+    # the two modules resolve to a single AMReX runtime at load time -- verified
+    # in CI (amrex.initialized() is True after impactx init). A real shared
+    # libamrex.so is neither produced (Emscripten/CMake downgrades shared->static
+    # here) nor needed; fully static => no wheel-repair/vendoring step.
+    export AMREX_SHARED="OFF"
 
     install_pyessentials
     build_zlib
