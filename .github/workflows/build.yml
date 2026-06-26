@@ -4,8 +4,6 @@ on: [push, pull_request]
 
 env:
   SRC_REF: '26.06'
-  # Patches applied to every leg (in addition to per-entry matrix.patches).
-  # Empty today; wired so a future release can carry a common source fix.
   COMMON_PATCHES: ''
 
 jobs:
