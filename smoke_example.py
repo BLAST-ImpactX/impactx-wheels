@@ -111,14 +111,19 @@ def _installed(mods):
 
 def _macos_backtrace():
     """macOS: capture a native lldb backtrace of the impactx + openpmd_api
-    co-load abort (the missing piece to debug it). No-op elsewhere / no lldb."""
+    co-load fault (the missing piece to debug it). No-op elsewhere / no lldb.
+    The fault is at the first HDF5 call (io.Series open), not the import, so the
+    traced command opens the Series; stop-on-exec=false lets it run to the fault."""
     if sys.platform != "darwin" or not shutil.which("lldb"):
         return
-    print("=== lldb backtrace: import impactx; import openpmd_api ===", flush=True)
+    code = ("import impactx, openpmd_api as io;"
+            "io.Series('diags/openPMD/monitor.h5', io.Access.read_only)")
+    print("=== lldb backtrace: impactx + openpmd_api io.Series ===", flush=True)
     subprocess.run(
-        ["lldb", "-b", "-o", "run", "-o", "bt all", "-o", "quit", "--",
-         sys.executable, "-c",
-         "import impactx; import openpmd_api; print('co-load OK')"],
+        ["lldb", "-b",
+         "-o", "settings set target.process.stop-on-exec false",
+         "-o", "run", "-o", "bt all", "-o", "quit", "--",
+         sys.executable, "-c", code],
         check=False,
     )
     print("=== end lldb backtrace ===", flush=True)
