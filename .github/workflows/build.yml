@@ -139,7 +139,6 @@ jobs:
             env:
               COMPUTE: "NOACC"
               SIMD: "ON"
-              AMREX_OMP: "OFF"
               WHEEL_ARCHFLAGS: "-msimd128"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
@@ -158,46 +157,13 @@ jobs:
             env:
               COMPUTE: "NOACC"
               SIMD: "OFF"
-              AMREX_OMP: "OFF"
               WHEEL_ARCHFLAGS: ""
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
-          # OpenMP probes (IMPACTX_COMPUTE=OMP x IMPACTX_SIMD=ON/OFF): expected to
-          # fail to LOAD in stock Pyodide (no -pthread / SharedArrayBuffer). Build
-          # + load signal on whether AMReX_OMP cross-compiles under Emscripten.
-          # Threaded wheels need a custom from-source Pyodide + cross-origin-
-          # isolation (COOP/COEP) headers and a pre-sized -sPTHREAD_POOL_SIZE.
-          - name: WebAssembly (OpenMP, SIMD)
-            os: ubuntu-24.04
-            arch: "wasm32"
-            host_python: "3.12"
-            platform: "pyodide"
-            build: "cp314-pyodide_wasm32"
-            patches: ".github/setup-py-crosscompile-impactx.patch"
-            publish: "false"
-            continue_on_error: true
-            env:
-              COMPUTE: "OMP"
-              SIMD: "ON"
-              AMREX_OMP: "ON"
-              WHEEL_ARCHFLAGS: "-msimd128 -pthread"
-              CMAKE_BUILD_PARALLEL_LEVEL: 4
-
-          - name: WebAssembly (OpenMP, no SIMD)
-            os: ubuntu-24.04
-            arch: "wasm32"
-            host_python: "3.12"
-            platform: "pyodide"
-            build: "cp314-pyodide_wasm32"
-            patches: ".github/setup-py-crosscompile-impactx.patch"
-            publish: "false"
-            continue_on_error: true
-            env:
-              COMPUTE: "OMP"
-              SIMD: "OFF"
-              AMREX_OMP: "ON"
-              WHEEL_ARCHFLAGS: "-pthread"
-              CMAKE_BUILD_PARALLEL_LEVEL: 4
+          # NOTE: OpenMP is not viable under Emscripten -- AMReX's
+          # find_package(OpenMP REQUIRED) fails to cross-compile, and stock
+          # Pyodide cannot load -pthread modules anyway (no SharedArrayBuffer).
+          # The IMPACTX_COMPUTE=OMP probe rows confirmed this and were removed.
 
     steps:
     - uses: actions/checkout@v7
@@ -292,7 +258,6 @@ jobs:
           IMPACTX_SIMD='${{ matrix.env.SIMD }}'
           IMPACTX_BUILD_SHARED_LIBS='OFF'
           AMREX_SIMD='${{ matrix.env.SIMD }}'
-          AMREX_OMP='${{ matrix.env.AMREX_OMP }}'
           HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
           IMPACTX_CMAKE_CMAKE_PROJECT_TOP_LEVEL_INCLUDES='/tmp/impactx-zlibfix.cmake'

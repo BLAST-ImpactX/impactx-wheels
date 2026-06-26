@@ -10,9 +10,9 @@
 The import of ``impactx`` is the real pass/fail gate (it loads the compiled
 wasm extension and all statically-linked deps). On top of that we run a small
 self-contained tracking problem and print the wall-clock time, so that across
-the NOACC/OpenMP x SIMD-on/off CI matrix the ``BENCH ...`` log line lets us
-compare whether WebAssembly SIMD (and OpenMP, where a wheel can be loaded at
-all) actually speeds up the particle push.
+the SIMD-on/off CI matrix the ``BENCH ...`` log lines let us compare whether
+WebAssembly SIMD actually speeds up a cheap linear element vs a compute-bound
+(nonlinear, transcendental-heavy) one.
 
 Kept single-threaded and free of file output so it runs inside the cibuildwheel
 Node/Pyodide sandbox. Usage:
@@ -82,32 +82,43 @@ def run(npart=20000, nsteps=100):
     beam = sim.beam
     assert beam.total_number_of_particles() == npart
 
-    # repeatedly push the bunch through a FODO-like cell; this is the hot loop
-    # that AMReX SIMD / OpenMP would accelerate.
-    t0 = time.perf_counter()
-    for _ in range(nsteps):
-        push(beam, elements.Quad(ds=1.0, k=1.0))
-        push(beam, elements.Drift(ds=0.5))
-        push(beam, elements.Quad(ds=1.0, k=-1.0))
-        push(beam, elements.Drift(ds=0.5))
-    dt = time.perf_counter() - t0
+    # Two hot loops to isolate the SIMD effect (identical work on every CI row,
+    # so the SIMD-on vs SIMD-off comparison is fair):
+    #   linear  -> a cheap linear map (Drift: x += px*ds), ~memory-bound, little
+    #              for SIMD to gain.
+    #   compute -> the exact nonlinear sector bend, which evaluates several
+    #              sqrt / asin / sincos per particle -> compute-bound, the case
+    #              where AMReX vir-simd vectorization should actually pay off.
+    dt_lin = _bench(beam, elements.Drift(ds=0.5), npart, nsteps, "linear")
+    dt_cmp = _bench(
+        beam, elements.ExactSbend(name="b", ds=0.25, phi=2.0), npart, nsteps,
+        "compute",
+    )
 
     try:
         sim.finalize()
     except Exception:
         pass
+    return dt_lin, dt_cmp
+
+
+def _bench(beam, element, npart, nsteps, label):
+    t0 = time.perf_counter()
+    for _ in range(nsteps):
+        push(beam, element)
+    dt = time.perf_counter() - t0
+    # machine-greppable benchmark line for cross-row (SIMD on/off) comparison
+    print(
+        "BENCH %-8s npart=%d nsteps=%d elapsed=%.3fs" % (label, npart, nsteps, dt),
+        file=sys.stderr,
+    )
     return dt
 
 
 def main(argv):
-    npart = int(argv[0]) if len(argv) > 0 else 20000
-    nsteps = int(argv[1]) if len(argv) > 1 else 100
-    dt = run(npart, nsteps)
-    # machine-greppable benchmark line for cross-row comparison in CI logs
-    print(
-        "BENCH npart=%d nsteps=%d elapsed=%.3fs" % (npart, nsteps, dt),
-        file=sys.stderr,
-    )
+    npart = int(argv[0]) if len(argv) > 0 else 50000
+    nsteps = int(argv[1]) if len(argv) > 1 else 200
+    run(npart, nsteps)
     print("ImpactX WASM smoke test PASSED", file=sys.stderr)
     return 0
 
