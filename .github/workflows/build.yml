@@ -123,11 +123,12 @@ jobs:
           # the Emscripten toolchain is only on PATH after the pyodide xbuildenv
           # is set up; the same sysroot is reused by the wheel build.
           #
-          # AMReX is built as a true Emscripten side module (AMREX_SHARED=ON)
-          # and vendored into the wheel by auditwheel-emscripten, so the `amrex`
-          # (pyAMReX) and `impactx` extension modules share ONE AMReX runtime --
-          # required because ImpactX returns pyAMReX objects across the module
-          # boundary (e.g. sim.particle_container()).
+          # AMReX is statically linked into both the `amrex` (pyAMReX) and
+          # `impactx` extension modules. In Pyodide this still yields ONE AMReX
+          # runtime: Emscripten side modules share a global symbol table, so both
+          # modules resolve to a single set of AMReX singletons + pybind type
+          # registry at load time (verified in CI: amrex.initialized() is True
+          # after impactx init). Fully static => no wheel-repair/vendoring step.
           - name: WebAssembly
             os: ubuntu-24.04
             arch: "wasm32"
@@ -139,9 +140,7 @@ jobs:
               COMPUTE: "NOACC"
               SIMD: "ON"
               AMREX_OMP: "OFF"
-              AMREX_SHARED: "ON"
               WHEEL_ARCHFLAGS: "-msimd128"
-              REPAIR_PYODIDE: 'pip install auditwheel-emscripten && pyodide auditwheel repair {wheel} --libdir "$(em-config CACHE)/sysroot/lib" -o {dest_dir}'
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # --- WASM exploration probes (compile/run experiments, never published) ---
@@ -160,9 +159,7 @@ jobs:
               COMPUTE: "NOACC"
               SIMD: "OFF"
               AMREX_OMP: "OFF"
-              AMREX_SHARED: "ON"
               WHEEL_ARCHFLAGS: ""
-              REPAIR_PYODIDE: 'pip install auditwheel-emscripten && pyodide auditwheel repair {wheel} --libdir "$(em-config CACHE)/sysroot/lib" -o {dest_dir}'
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # OpenMP probes (IMPACTX_COMPUTE=OMP x IMPACTX_SIMD=ON/OFF): expected to
@@ -183,9 +180,7 @@ jobs:
               COMPUTE: "OMP"
               SIMD: "ON"
               AMREX_OMP: "ON"
-              AMREX_SHARED: "ON"
               WHEEL_ARCHFLAGS: "-msimd128 -pthread"
-              REPAIR_PYODIDE: 'pip install auditwheel-emscripten && pyodide auditwheel repair {wheel} --libdir "$(em-config CACHE)/sysroot/lib" -o {dest_dir}'
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           - name: WebAssembly (OpenMP, no SIMD)
@@ -201,31 +196,7 @@ jobs:
               COMPUTE: "OMP"
               SIMD: "OFF"
               AMREX_OMP: "ON"
-              AMREX_SHARED: "ON"
               WHEEL_ARCHFLAGS: "-pthread"
-              REPAIR_PYODIDE: 'pip install auditwheel-emscripten && pyodide auditwheel repair {wheel} --libdir "$(em-config CACHE)/sysroot/lib" -o {dest_dir}'
-              CMAKE_BUILD_PARALLEL_LEVEL: 4
-
-          # Static-AMReX linkage probe: same as the shipped wheel but AMReX is
-          # statically linked into each extension. Expected to FAIL the interop
-          # smoke check (two AMReX runtimes) -- this is the CI demonstration that
-          # the shared side-module linkage above is required, not optional.
-          - name: WebAssembly (static AMReX probe)
-            os: ubuntu-24.04
-            arch: "wasm32"
-            host_python: "3.12"
-            platform: "pyodide"
-            build: "cp314-pyodide_wasm32"
-            patches: ".github/setup-py-crosscompile-impactx.patch"
-            publish: "false"
-            continue_on_error: true
-            env:
-              COMPUTE: "NOACC"
-              SIMD: "ON"
-              AMREX_OMP: "OFF"
-              AMREX_SHARED: "OFF"
-              WHEEL_ARCHFLAGS: "-msimd128"
-              REPAIR_PYODIDE: ""
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
     steps:
@@ -308,17 +279,11 @@ jobs:
         # AMREX_SIMD drives the external AMReX build in library_builders.sh, IMPACTX_SIMD the wheel.
         CIBW_ENVIRONMENT: HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' IMPACTX_SIMD='${{ matrix.env.SIMD }}' AMREX_SIMD='${{ matrix.env.SIMD }}' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' ZLIB_USE_STATIC_LIBS='ON' PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
         # WASM/Pyodide: NOACC|OMP x SIMD on|off per matrix row. MPI off; static
-        # HDF5/zlib live in the Emscripten sysroot; AMReX is built externally
-        # (library_builders.sh wasm) -- shared side module for the shipped wheel,
-        # static for the probe row (AMREX_SHARED). openPMD (HDF5) + FFT stay on.
-        # If openPMD's find_package(HDF5) trips on static HDF5's missing
-        # ZLIB::ZLIB, override openPMD with e.g.
-        #   IMPACTX_CMAKE_ImpactX_openpmd_branch='<ref-with-find_dependency(ZLIB)>'
-        # AMREX_SHARED drives whether library_builders.sh builds libamrex as a
-        # shared Emscripten side module (ON, the shipped wheel) or static (OFF,
-        # the linkage probe). IMPACTX_BUILD_SHARED_LIBS stays OFF: only AMReX is
-        # shared across the two extension modules; ABLASTR/libimpactx are used
-        # only by impactx and are embedded statically.
+        # HDF5/zlib/AMReX live in the Emscripten sysroot and are statically linked
+        # into the extension modules (one shared AMReX runtime via Emscripten's
+        # shared side-module symbol table). openPMD (HDF5) + FFT stay on.
+        # The zlibfix below defines ZLIB::ZLIB so static HDF5's link finds libz
+        # (static HDF5 omits find_dependency(ZLIB); see library_builders.sh).
         CIBW_ENVIRONMENT_PYODIDE: >
           IMPACTX_AMREX_INTERNAL='OFF'
           IMPACTX_COMPUTE='${{ matrix.env.COMPUTE }}'
@@ -328,7 +293,6 @@ jobs:
           IMPACTX_BUILD_SHARED_LIBS='OFF'
           AMREX_SIMD='${{ matrix.env.SIMD }}'
           AMREX_OMP='${{ matrix.env.AMREX_OMP }}'
-          AMREX_SHARED='${{ matrix.env.AMREX_SHARED }}'
           HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
           IMPACTX_CMAKE_CMAKE_PROJECT_TOP_LEVEL_INCLUDES='/tmp/impactx-zlibfix.cmake'
@@ -343,9 +307,8 @@ jobs:
         # cibuildwheel does not repair Windows wheels by default. Since pyAMReX links
         # against the shared AMReX runtime on Windows, vendor that DLL into the wheel.
         CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: 'delvewheel repair --add-path "C:\Program Files (x86)\AMReX\bin" -v -w {dest_dir} {wheel}'
-        # WASM: vendor the shared libamrex side module into the wheel with
-        # auditwheel-emscripten (shared rows); empty for the static probe row.
-        CIBW_REPAIR_WHEEL_COMMAND_PYODIDE: "${{ matrix.env.REPAIR_PYODIDE }}"
+        # WASM is fully static -> nothing to repair/vendor.
+        CIBW_REPAIR_WHEEL_COMMAND_PYODIDE: ""
         CMAKE_BUILD_PARALLEL_LEVEL: "${{ matrix.env.CMAKE_BUILD_PARALLEL_LEVEL }}"
         # C++17 support in macOS 10.13+ (partial) and 10.14+ (std::visit) and 10.15+ (std::filesystem::path)
         #   https://cibuildwheel.readthedocs.io/en/stable/cpp_standards/#macos-and-deployment-target-versions
