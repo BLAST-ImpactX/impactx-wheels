@@ -1,0 +1,37 @@
+From d51fc5a59783f24562185d4af12e57e47155f0de Mon Sep 17 00:00:00 2001
+From: Weiqun Zhang <weiqunzhang@lbl.gov>
+Date: Thu, 25 Jun 2026 15:47:01 -0700
+Subject: [PATCH] Fix parser node alignment for 32-bit builds
+
+On 32-bit platforms, pointer alignment can be only 4 bytes while double
+still requires 8-byte alignment, so using pointer-based parser_node
+alignment can underalign parser_number. Align parser_node to the max of
+pointer and double alignment.
+---
+ Src/Base/Parser/AMReX_Parser_Y.H | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/Src/Base/Parser/AMReX_Parser_Y.H b/Src/Base/Parser/AMReX_Parser_Y.H
+index 130132a515..ea0ecf5889 100644
+--- a/Src/Base/Parser/AMReX_Parser_Y.H
++++ b/Src/Base/Parser/AMReX_Parser_Y.H
+@@ -13,6 +13,7 @@
+ #include <AMReX_Print.H>
+ #include <AMReX_REAL.H>
+ 
++#include <algorithm>
+ #include <cmath>
+ #include <cstddef>
+ #include <cstdio>
+@@ -206,7 +207,10 @@ std::string_view parser_node_s[] =
+  * parser_node_t type can be safely checked to determine their real type.
+  */
+ 
+-struct parser_node {
++static constexpr std::size_t parser_node_alignment =
++    std::max(alignof(double*), alignof(double));
++
++struct alignas(parser_node_alignment) parser_node {
+     enum parser_node_t type;
+     enum parser_node_t padding;
+     struct parser_node* l; // NOLINT(misc-confusable-identifiers)
