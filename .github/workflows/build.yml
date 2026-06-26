@@ -8,19 +8,21 @@ env:
 
 jobs:
   build_wheels:
-    name: Build ${{ matrix.build || matrix.arch }} wheel on ${{ matrix.os }}
+    name: ${{ matrix.name }} (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # Per-entry knobs (all optional, sensible native defaults below):
+        # Per-entry knobs (sensible native defaults below):
+        #   name         job display name
         #   platform     CIBW_PLATFORM                 (default auto)
         #   build        CIBW_BUILD                    (default *, i.e. all)
         #   patches      space-separated setup patches (default: none)
         #   sdist        also build + upload the sdist artifact (default: off)
         #   env.SIMD / env.WHEEL_ARCHFLAGS  per-arch vectorization (see below)
         include:
-          - os: ubuntu-24.04
+          - name: 64bit Linux
+            os: ubuntu-24.04
             arch: "x86_64"
             sdist: true   # this reliable native leg also emits the sdist artifact
             env:
@@ -28,33 +30,38 @@ jobs:
               WHEEL_ARCHFLAGS: "-march=x86-64-v3 -mtune=generic"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
-          - os: ubuntu-24.04
+          - name: 32bit Linux
+            os: ubuntu-24.04
             arch: "i686"
             env:
               SIMD: "OFF"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
-          - os: ubuntu-24.04-arm
+          - name: 64bit Linux
+            os: ubuntu-24.04-arm
             arch: "aarch64"
             env:
               SIMD: "ON"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # builds faster on Travis-CI:
-          #- os: ubuntu-24.04
+          #- name: 64bit Linux
+          #  os: ubuntu-24.04
           #  arch: "ppc64le"
           #  env:
           #    CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # builds faster on Travis-CI:
           # blocked by https://github.com/GTkorvo/dill/issues/15
-          #- os: ubuntu-24.04
+          #- name: 64bit Linux
+          #  os: ubuntu-24.04
           #  arch: "s390x"
           #  env:
           #    CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # x86-64 (64bit)
-          - os: windows-2022
+          - name: 64bit Windows
+            os: windows-2022
             arch: "AMD64"
             env:
               # Explicit SIMD (vir-simd) needs clang/gcc builtins, not MSVC, so SIMD stays OFF.
@@ -64,7 +71,8 @@ jobs:
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # x86 (32bit)
-          - os: windows-2022
+          - name: 32bit Windows
+            os: windows-2022
             arch: "x86"
             env:
               SIMD: "OFF"
@@ -72,7 +80,8 @@ jobs:
               CMAKE_GENERATOR_PLATFORM: "Win32"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
-          - os: macos-15-intel
+          - name: 64bit macOS
+            os: macos-15-intel
             arch: "x86_64"
             env:
               SIMD: "ON"
@@ -82,7 +91,8 @@ jobs:
 
           # Apple Silicon M1/arm64/aarch64 builds:
           #   https://cibuildwheel.readthedocs.io/en/stable/faq/#apple-silicon
-          - os: macos-14
+          - name: 64bit macOS
+            os: macos-14
             arch: "arm64"
             env:
               SIMD: "ON"
@@ -99,7 +109,8 @@ jobs:
           # compute-bound elements (CI-measured). AMReX is statically linked into
           # both the amrex and impactx modules; on WASM that still resolves to one
           # AMReX runtime at load (verified in CI), so no wheel-repair is needed.
-          - os: ubuntu-24.04
+          - name: WebAssembly
+            os: ubuntu-24.04
             arch: "wasm32"
             platform: "pyodide"
             build: "cp314-pyodide_wasm32"
