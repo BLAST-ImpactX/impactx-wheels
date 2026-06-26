@@ -118,10 +118,16 @@ jobs:
           # the pyemscripten platform tag (PEP 783).
           #   https://cibuildwheel.pypa.io/en/stable/platforms/#pyodide
           # Single-threaded NOACC (stock Pyodide cannot load -pthread modules),
-          # WASM SIMD via -msimd128, HDF5 (openPMD) + FFT; MPI off. The deps
-          # (zlib, HDF5, FFTW, AMReX) are cross-compiled in BEFORE_BUILD because
-          # the Emscripten toolchain is only on PATH after the pyodide xbuildenv
-          # is set up; the same sysroot is reused by the wheel build.
+          # HDF5 (openPMD) + FFT; MPI off. The deps (zlib, HDF5, FFTW, AMReX) are
+          # cross-compiled in BEFORE_BUILD because the Emscripten toolchain is only
+          # on PATH after the pyodide xbuildenv is set up; the same sysroot is
+          # reused by the wheel build.
+          #
+          # SIMD is intentionally OFF: WebAssembly SIMD128 has no vectorized
+          # transcendentals, so AMReX/vir-simd emulates asin/sincos/etc. per-lane
+          # (extract -> scalar libm -> reinsert) and loses to plain scalar. CI
+          # benchmark (50k particles, exact nonlinear bend): SIMD off 0.39 s vs
+          # SIMD on 1.04 s -- ~2.6x slower. Baseline wasm is also more portable.
           #
           # AMReX is statically linked into both the `amrex` (pyAMReX) and
           # `impactx` extension modules. In Pyodide this still yields ONE AMReX
@@ -138,14 +144,15 @@ jobs:
             patches: ".github/setup-py-crosscompile-impactx.patch"
             env:
               COMPUTE: "NOACC"
-              SIMD: "ON"
-              WHEEL_ARCHFLAGS: "-msimd128"
+              SIMD: "OFF"
+              WHEEL_ARCHFLAGS: ""
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
-          # --- WASM exploration probes (compile/run experiments, never published) ---
-          # A/B for the SIMD speedup question: identical to the shipped wheel but
-          # with WASM SIMD off (IMPACTX_COMPUTE=NOACC x IMPACTX_SIMD=OFF).
-          - name: WebAssembly (NOACC, no SIMD)
+          # --- WASM exploration probe (never published) ---
+          # A/B for the SIMD question: identical to the shipped wheel but with
+          # WASM SIMD on (-msimd128). Kept to track the SIMD regression above and
+          # catch a future toolchain that makes wasm SIMD profitable.
+          - name: WebAssembly (SIMD)
             os: ubuntu-24.04
             arch: "wasm32"
             host_python: "3.12"
@@ -156,8 +163,8 @@ jobs:
             continue_on_error: true
             env:
               COMPUTE: "NOACC"
-              SIMD: "OFF"
-              WHEEL_ARCHFLAGS: ""
+              SIMD: "ON"
+              WHEEL_ARCHFLAGS: "-msimd128"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # NOTE: OpenMP is not viable under Emscripten -- AMReX's
