@@ -250,8 +250,6 @@ function build_hdf5_cmake {
     if [ -e hdf5-stamp ]; then return; fi
 
     HDF5_VERSION="1.14.6"
-    # pinned libhdf5-wasm revision the FE_INVALID patch is fetched from
-    LIBHDF5_WASM_REF="2069e0a2ab8073a1b7f08a10adae0ce6d73905fe"
 
     curl ${CURL_RETRY} -fsSL -o hdf5-${HDF5_VERSION}.tar.gz \
         https://github.com/HDFGroup/hdf5/releases/download/hdf5_${HDF5_VERSION}/hdf5-${HDF5_VERSION}.tar.gz
@@ -260,9 +258,9 @@ function build_hdf5_cmake {
     rm hdf5*.tar.gz
 
     # Emscripten's <fenv.h> may not define FE_INVALID; guard feclearexcept().
-    curl ${CURL_RETRY} -fsSL -o hdf5-${HDF5_VERSION}/FE_INVALID.patch \
-        https://raw.githubusercontent.com/usnistgov/libhdf5-wasm/${LIBHDF5_WASM_REF}/patches/${HDF5_VERSION}/FE_INVALID.patch
-    ( cd hdf5-${HDF5_VERSION} && patch -p1 < FE_INVALID.patch )
+    # Vendored verbatim from usnistgov/libhdf5-wasm @ 2069e0a (patches/1.14.6):
+    #   https://github.com/usnistgov/libhdf5-wasm/blob/2069e0a2ab8073a1b7f08a10adae0ce6d73905fe/patches/1.14.6/FE_INVALID.patch
+    patch -p1 -d hdf5-${HDF5_VERSION} < .github/hdf5-${HDF5_VERSION}-FE_INVALID.patch
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
