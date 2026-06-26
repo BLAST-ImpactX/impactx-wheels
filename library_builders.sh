@@ -88,13 +88,24 @@ function build_amrex {
     tar xzf amrex-${AMREX_VERSION}.tar.gz
     rm amrex*.tar.gz
 
-    # WASM: CMake marks the Emscripten platform as TARGET_SUPPORTS_SHARED_LIBS=
-    # FALSE, so AMReX's AMReXOptions.cmake aborts on AMReX_BUILD_SHARED_LIBS. We
-    # build libamrex as a deliberate Emscripten side module (-sSIDE_MODULE=1, see
-    # AMREX_SHARED_LINKER_FLAGS), so force the capability flag AMReX checks.
-    if [ -n "${EMCMAKE}" ] && [ "${AMREX_SHARED:-OFF}" = "ON" ]; then
-        sed -i 's|get_property(SHARED_LIBS_SUPPORTED GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)|&\n    set(SHARED_LIBS_SUPPORTED TRUE)  # WASM side-module override (impactx-wheels)|' \
-            amrex/Tools/CMake/AMReXOptions.cmake
+    # WASM/Emscripten source fixes for AMReX (no upstream emscripten support yet).
+    if [ -n "${EMCMAKE}" ]; then
+        # (1) wasm32 ABI: pointers are 4 bytes but double needs 8-byte alignment.
+        #     parser_number is `alignas(parser_node)` (=4) yet contains a double,
+        #     so clang errors "requested alignment is less than minimum alignment
+        #     of 8". Bump the shared base parser_node to alignas(8) -> every
+        #     `alignas(parser_node)` parser struct becomes 8-aligned. (Native
+        #     32-bit x86 escapes this because double is 4-aligned there.)
+        sed -i 's|^struct parser_node {|struct alignas(8) parser_node {|' \
+            amrex/Src/Base/Parser/AMReX_Parser_Y.H
+        # (2) CMake marks Emscripten TARGET_SUPPORTS_SHARED_LIBS=FALSE, so
+        #     AMReXOptions.cmake aborts on AMReX_BUILD_SHARED_LIBS. We build
+        #     libamrex as a deliberate side module (-sSIDE_MODULE=1, see
+        #     AMREX_SHARED_LINKER_FLAGS); force the capability flag AMReX checks.
+        if [ "${AMREX_SHARED:-OFF}" = "ON" ]; then
+            sed -i 's|get_property(SHARED_LIBS_SUPPORTED GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)|&\n    set(SHARED_LIBS_SUPPORTED TRUE)  # WASM side-module override (impactx-wheels)|' \
+                amrex/Tools/CMake/AMReXOptions.cmake
+        fi
     fi
 
     PY_BIN=$(which python3)
@@ -328,17 +339,26 @@ function build_zlib {
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
+    # zlib always builds BOTH a shared (zlib) and a static (zlibstatic) target,
+    # both named libz. Emscripten has no shared-lib support, so the shared one is
+    # downgraded to a static archive: both then write libz.a and race under a
+    # parallel build (llvm-ranlib: "unable to load 'libz.a'"). Serialize the WASM
+    # zlib build (${EMMAKE} non-empty) and skip the unused example/minigzip
+    # executables (they also link libz.a).
+    ZLIB_NPROC="${CPU_COUNT}"
+    [ -n "${EMMAKE}" ] && ZLIB_NPROC=1
     # ${EMCMAKE}/${EMMAKE} are empty for native builds and emcmake/emmake for WASM
     PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \
       -S zlib-*     \
       -B build-zlib \
       -DBUILD_SHARED_LIBS=OFF \
+      -DZLIB_BUILD_EXAMPLES=OFF \
       -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
-    PATH=${CMAKE_BIN}:${PATH} ${EMMAKE} cmake --build build-zlib --parallel ${CPU_COUNT}
+    PATH=${CMAKE_BIN}:${PATH} ${EMMAKE} cmake --build build-zlib --parallel ${ZLIB_NPROC}
     PATH=${CMAKE_BIN}:${PATH} ${SUDO} ${EMMAKE} cmake --build build-zlib --target install
     ${SUDO} rm -rf ${BUILD_PREFIX}/lib/libz.*dylib ${BUILD_PREFIX}/lib/libz.*so*
 
