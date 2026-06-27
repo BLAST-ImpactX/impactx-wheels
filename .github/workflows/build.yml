@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 env:
   SRC_REF: '26.06'
-  COMMON_PATCHES: '.github/cmakelists-export-pyinit-impactx.patch'
+  COMMON_PATCHES: '.github/cmakelists-export-pyinit-impactx.patch .github/setup-py-version-post1-impactx.patch'
 
 jobs:
   build_wheels:
@@ -148,9 +148,12 @@ jobs:
         python -m pip install cibuildwheel==4.1.0
 
     # Source patches not (yet) in the built release tag.
-    # Applies all matrix.patches (if any), then the $COMMON_PATCHES (currently
-    # impactx#1538: export only the module init symbol so co-loaded extensions
-    # -- openpmd_api, WarpX -- keep their bundled HDF5/openPMD/AMReX private).
+    # Applies all matrix.patches (if any), then the $COMMON_PATCHES:
+    #   - impactx#1538: export only the module init symbol so co-loaded
+    #     extensions (openpmd_api, WarpX) keep their bundled HDF5/openPMD/AMReX
+    #     private (fixes the macOS co-load crash).
+    #   - bump the version to 26.06.post1, to ship that fix before the next
+    #     ImpactX release.
     - name: Apply patches
       shell: bash
       run: |
