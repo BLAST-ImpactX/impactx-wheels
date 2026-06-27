@@ -63,6 +63,10 @@ jobs:
           - name: 64bit Windows
             os: windows-2022
             arch: "AMD64"
+            # DEBUG (temporary): build a single interpreter to iterate the win64
+            # `import impactx` access violation faster. Restore to all CPythons
+            # (delete this `build:` line) before merge.
+            build: "cp311-win_amd64"
             env:
               # Explicit SIMD (vir-simd) needs clang/gcc builtins, not MSVC, so SIMD stays OFF.
               # We still target AVX2 via MSVC codegen (/arch:AVX2): scalar FMA + auto-vectorization.
@@ -71,14 +75,17 @@ jobs:
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # x86 (32bit)
-          - name: 32bit Windows
-            os: windows-2022
-            arch: "x86"
-            env:
-              SIMD: "OFF"
-              CMAKE_GENERATOR: "Visual Studio 17 2022"
-              CMAKE_GENERATOR_PLATFORM: "Win32"
-              CMAKE_BUILD_PARALLEL_LEVEL: 4
+          # SKIP: 32-bit Windows has never worked for ImpactX (the openpmd-api
+          # 32-bit wheel ships without an HDF5 backend, so the smoke test fails);
+          # to be addressed in a later PR. Re-enable by uncommenting.
+          #- name: 32bit Windows
+          #  os: windows-2022
+          #  arch: "x86"
+          #  env:
+          #    SIMD: "OFF"
+          #    CMAKE_GENERATOR: "Visual Studio 17 2022"
+          #    CMAKE_GENERATOR_PLATFORM: "Win32"
+          #    CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           - name: 64bit macOS
             os: macos-15-intel
@@ -262,6 +269,15 @@ jobs:
           python {project}/.github/check_wheel_libs.py &&
           pytest {project}/tests/python/test_push.py &&
           python {project}/.github/smoke_example.py
+        # DEBUG (temporary, win64 only): localize the `import impactx` access
+        # violation. check_wheel_libs.py now resolves the delvewheel-bundled
+        # amrex DLL (proves packaging is fine), then win_debug.py runs the
+        # staged co-load imports in a child process under faulthandler + cdb so
+        # the crash is captured with a backtrace instead of a bare 0xC0000005.
+        # Restore to the shared CIBW_TEST_COMMAND (delete this) before merge.
+        CIBW_TEST_COMMAND_WINDOWS: >
+          python {project}/.github/check_wheel_libs.py &&
+          python {project}/.github/win_debug.py
         CIBW_TEST_REQUIRES_PYODIDE: numpy openpmd-api
         CIBW_TEST_COMMAND_PYODIDE: >
           python {project}/.github/check_wheel_libs.py || true;
