@@ -248,8 +248,8 @@ jobs:
           IMPACTX_COMPUTE='NOACC'
           IMPACTX_FFT='ON'
           IMPACTX_CMAKE_openPMD_USE_HDF5='ON'
-          CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
-          CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
+          CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }} /DH5_BUILT_AS_STATIC_LIB'
+          CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }} /DH5_BUILT_AS_STATIC_LIB'
           CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF'
           CMAKE_PREFIX_PATH='C:/Program Files (x86)/AMReX;C:/Program Files (x86)/fftw;C:/Program Files (x86)/HDF5;C:/Program Files (x86)/zlib'
         # pyAMReX links the shared AMReX runtime on Windows -> vendor that DLL,
