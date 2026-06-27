@@ -1,0 +1,14 @@
+Wheels-local patch (no upstream PR): ship the impactx#1538 symbol-export fix as
+a post-release, 26.06.post1 (PEP 440 -> normalizes to 26.6.post1), without
+waiting for the next ImpactX release. Applied to setup.py via COMMON_PATCHES,
+after rename_package.py; the 1-line context avoids the rewritten name= line.
+
+diff --git a/setup.py b/setup.py
+index 6deb60b..ef86e54 100644
+--- a/setup.py
++++ b/setup.py
+@@ -244,3 +244,3 @@ setup(
+     # note PEP-440 syntax: x.y.zaN but x.y.z.devN
+-    version="26.06",
++    version="26.06.post1",
+     packages=["impactx"],
