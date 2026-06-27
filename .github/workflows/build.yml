@@ -252,20 +252,20 @@ jobs:
         CMAKE_OSX_ARCHITECTURES: "${{ matrix.env.CMAKE_OSX_ARCHITECTURES }}"
         CMAKE_GENERATOR: "${{ matrix.env.CMAKE_GENERATOR }}"
         CMAKE_GENERATOR_PLATFORM: "${{ matrix.env.CMAKE_GENERATOR_PLATFORM }}"
-        # Smoke test: shared-lib deps (check_wheel_libs.py), the push unit test,
-        # and smoke_example.py (runs a FODO example + reads its openPMD monitor
-        # with openpmd_api co-loaded in-process; it installs/skips its own
-        # pandas/openpmd-api read-back deps, which have no 32-bit wheels).
-        # Pyodide runs in a node sandbox -> best-effort `|| true`; native uses &&.
-        CIBW_TEST_REQUIRES: pytest numpy
+        # Smoke test (same on every platform incl. wasm): shared-lib deps
+        # (check_wheel_libs.py), the push unit test (native only), and
+        # smoke_example.py -- runs a FODO example and reads its openPMD monitor
+        # with the openpmd_api wheel co-loaded in the same process.
+        # Pyodide runs in a node sandbox (no pytest CLI) -> check is best-effort.
+        CIBW_TEST_REQUIRES: pytest numpy openpmd-api
         CIBW_TEST_COMMAND: >
           python {project}/.github/check_wheel_libs.py &&
           pytest {project}/tests/python/test_push.py &&
           python {project}/.github/smoke_example.py
-        CIBW_TEST_REQUIRES_PYODIDE: numpy
+        CIBW_TEST_REQUIRES_PYODIDE: numpy openpmd-api
         CIBW_TEST_COMMAND_PYODIDE: >
           python {project}/.github/check_wheel_libs.py || true;
-          python {project}/.github/wasm_smoke.py
+          python {project}/.github/smoke_example.py
         # Show a bit more output (pip -v)
         CIBW_BUILD_VERBOSITY: 1
       run: |
