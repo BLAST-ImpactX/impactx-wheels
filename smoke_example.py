@@ -90,6 +90,7 @@ def analyze(npart):
     beam = series.iterations[steps[-1]].particles["beam"]
     x = beam["position"]["x"].load_chunk()
     series.flush()
+    series.close()  # release HDF5 objects before exit (clean library teardown)
 
     assert len(x) == npart, len(x)
     assert np.all(np.isfinite(x)), "non-finite position data"
