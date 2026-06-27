@@ -75,23 +75,21 @@ jobs:
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # x86 (32bit)
-          # SKIP: 32-bit Windows has never worked for ImpactX. ImpactX's own
-          # bundled (C++) openPMD is built without a working HDF5 backend on
-          # win32 -- a local 32-bit HDF5 build/link issue -- so the BeamMonitor
-          # write (backend="h5") fails inside sim.track_particles() with
-          # "openPMD-api built without support for backend 'HDF5'". (The
-          # openpmd-api PyPI wheel itself DOES ship HDF5 on win32; this is purely
-          # our bundled build.) A working 32-bit Windows HDF5 build lives in
-          # openPMD-api (branch `wheels`); port it in a later PR. Re-enable by
-          # uncommenting.
-          #- name: 32bit Windows
-          #  os: windows-2022
-          #  arch: "x86"
-          #  env:
-          #    SIMD: "OFF"
-          #    CMAKE_GENERATOR: "Visual Studio 17 2022"
-          #    CMAKE_GENERATOR_PLATFORM: "Win32"
-          #    CMAKE_BUILD_PARALLEL_LEVEL: 4
+          # Re-enabled to validate the HDF5 fix: ImpactX's bundled openPMD was
+          # built without the HDF5 backend on Windows because HDF5 was missing
+          # from CMAKE_PREFIX_PATH (and openPMD_USE_HDF5 not forced), so the
+          # BeamMonitor write failed at sim.track_particles(). Fixed in
+          # CIBW_ENVIRONMENT_WINDOWS below, mirroring the openPMD-api builder.
+          # DEBUG (temporary): one interpreter only for speed.
+          - name: 32bit Windows
+            os: windows-2022
+            arch: "x86"
+            build: "cp311-win32"
+            env:
+              SIMD: "OFF"
+              CMAKE_GENERATOR: "Visual Studio 17 2022"
+              CMAKE_GENERATOR_PLATFORM: "Win32"
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           - name: 64bit macOS
             os: macos-15-intel
@@ -237,16 +235,23 @@ jobs:
         # ImpactX defaults Python IPO/LTO to ON; on Windows that enables /GL+/LTCG
         # via pybind11 and trips an MSVC ICE in WakeConvolution.cpp -> force off.
         # CFLAGS/CXXFLAGS carry /arch:AVX2 on AMD64 only (empty on Win32).
+        # openPMD's HDF5 backend: HDF5 is built by library_builders.bat into
+        # C:\Program Files (x86)\HDF5, but it must be on CMAKE_PREFIX_PATH for
+        # find_package(HDF5) to see it AND openPMD_USE_HDF5 forced ON (else
+        # openPMD silently configures without HDF5 -> BeamMonitor h5 write fails
+        # at runtime). Mirrors the openPMD-api PyPI wheels builder. Forward
+        # slashes avoid backslash list-escaping in the ;-separated path.
         CIBW_ENVIRONMENT_WINDOWS: >
           HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
           IMPACTX_AMREX_INTERNAL='OFF'
           IMPACTX_COMPUTE='NOACC'
           IMPACTX_FFT='ON'
+          IMPACTX_CMAKE_openPMD_USE_HDF5='ON'
           CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
           CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
           CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF'
-          CMAKE_PREFIX_PATH='C:\Program Files (x86)\AMReX;C:\Program Files (x86)\fftw;C:\Program Files (x86)\zlib'
+          CMAKE_PREFIX_PATH='C:/Program Files (x86)/AMReX;C:/Program Files (x86)/fftw;C:/Program Files (x86)/HDF5;C:/Program Files (x86)/zlib'
         # pyAMReX links the shared AMReX runtime on Windows -> vendor that DLL,
         # but --exclude the MSVC C++ runtime: a private copy collides
         # with co-loaded C++ extensions in other imports and causes heap corruption.

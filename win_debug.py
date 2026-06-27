@@ -19,6 +19,9 @@ probe localizes it WITHOUT taking the parent process down with it:
      re-run the same sequence under cdb to get a NATIVE backtrace -- which names
      the crashing module (amrex_3d / impactx_pybind / bundled openPMD / HDF5),
      even without symbols (module+offset).
+  3. If the imports survive (e.g. win32, which faults at the HDF5 write rather
+     than at import), run the real smoke_example.py so the same Windows test
+     command also validates the openPMD/HDF5 co-load round-trip end to end.
 
 Exits with the child's return code so CI still reflects the failure, but only
 AFTER all diagnostics have been printed by this surviving parent.
@@ -108,7 +111,15 @@ def main():
         else:
             print("\n(no cdb.exe found; faulthandler output above is the lead)",
                   flush=True)
-    return rc
+        return rc
+    # Imports survived (the win32 case): run the real co-load smoke -- ImpactX
+    # writes an openPMD/HDF5 BeamMonitor, openpmd_api reads it back -- to
+    # validate the HDF5 backend end to end.
+    smoke = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "smoke_example.py")
+    print("\n=== imports OK; running smoke_example.py (HDF5 round-trip) ===",
+          flush=True)
+    return run([py, smoke])
 
 
 if __name__ == "__main__":
