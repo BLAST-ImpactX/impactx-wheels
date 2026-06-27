@@ -388,7 +388,7 @@ if [ "${1:-}" = "wasm" ]; then
     # omits find_dependency(ZLIB), so the final wheel link would drop libz. Define
     # ZLIB::ZLIB and force it onto every target; ImpactX setup.py picks this up via
     # IMPACTX_CMAKE_CMAKE_PROJECT_TOP_LEVEL_INCLUDES. Fixed upstream in
-    # openPMD-api#1894 (the fetched openPMD 0.17.0 predates it).
+    # openPMD-api#1894 (>0.17.1).
     cat > /tmp/impactx-zlibfix.cmake <<EOF
 find_package(ZLIB QUIET)
 if(NOT TARGET ZLIB::ZLIB)
@@ -399,6 +399,7 @@ if(NOT TARGET ZLIB::ZLIB)
 endif()
 link_libraries(ZLIB::ZLIB)
 EOF
+
 else
     # Installation base path of all deps
     export BUILD_PREFIX="${BUILD_PREFIX:-/usr/local}"

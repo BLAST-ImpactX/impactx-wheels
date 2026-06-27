@@ -148,12 +148,7 @@ jobs:
         python -m pip install cibuildwheel==4.1.0
 
     # Source patches not (yet) in the built release tag.
-    # Applies all matrix.patches (if any), then the $COMMON_PATCHES:
-    #   - impactx#1538: export only the module init symbol so co-loaded
-    #     extensions (openpmd_api, WarpX) keep their bundled HDF5/openPMD/AMReX
-    #     private (fixes the macOS co-load crash).
-    #   - bump the version to 26.06.post1, to ship that fix before the next
-    #     ImpactX release.
+    # Applies all matrix.patches (if any), then the $COMMON_PATCHES (if any).
     - name: Apply patches
       shell: bash
       run: |
@@ -214,7 +209,7 @@ jobs:
           PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
         # Pyodide overrides: single-core NOACC, MPI off, no SIMD (slower on WASM).
         # The zlibfix defines ZLIB::ZLIB so static HDF5 links libz (HDF5 omits
-        # find_dependency(ZLIB); fixed upstream in openPMD-api#1894).
+        # find_dependency(ZLIB); fixed upstream in openPMD-api#1894 for >0.17.1).
         CIBW_ENVIRONMENT_PYODIDE: >
           HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
