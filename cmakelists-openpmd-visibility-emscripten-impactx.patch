@@ -1,0 +1,26 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7628781..07d4ccb 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -313,6 +313,21 @@ endif()
+ 
+ if(ImpactX_OPENPMD)
+     target_link_libraries(lib PUBLIC openPMD::openPMD)
++
++    # WASM: hide the statically-embedded openPMD's symbols so they are not
++    # GOT-exported from the Pyodide side module and cross-bound with a co-loaded
++    # second openPMD/HDF5 (the openpmd_api wheel) in the single Emscripten
++    # namespace -- which otherwise leaves HDF5 looping at atexit ("infinite loop
++    # closing library" -> wasm OOB). wasm-ld has no --exclude-libs, so hide via
++    # visibility. HDF5 is hidden at its own build (the wheel's library_builders);
++    # AMReX stays exported (shared runtime). Emscripten + internal-build only, so
++    # native / shared / shared-superbuilds are untouched.
++    if(EMSCRIPTEN AND ImpactX_openpmd_internal AND TARGET openPMD)
++        set_target_properties(openPMD PROPERTIES
++            C_VISIBILITY_PRESET hidden
++            CXX_VISIBILITY_PRESET hidden
++            VISIBILITY_INLINES_HIDDEN ON)
++    endif()
+ endif()
+ 
+ if(ImpactX_QED)

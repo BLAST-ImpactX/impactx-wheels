@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 env:
   SRC_REF: '26.06'
-  COMMON_PATCHES: '.github/cmakelists-export-pyinit-impactx.patch .github/setup-py-version-post1-impactx.patch .github/ablastr-openpmd-0.17.1-impactx.patch'
+  COMMON_PATCHES: '.github/cmakelists-export-pyinit-impactx.patch .github/setup-py-version-post1-impactx.patch .github/ablastr-openpmd-0.17.1-impactx.patch .github/cmakelists-openpmd-visibility-emscripten-impactx.patch'
 
 jobs:
   build_wheels:
