@@ -75,9 +75,15 @@ jobs:
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # x86 (32bit)
-          # SKIP: 32-bit Windows has never worked for ImpactX (the openpmd-api
-          # 32-bit wheel ships without an HDF5 backend, so the smoke test fails);
-          # to be addressed in a later PR. Re-enable by uncommenting.
+          # SKIP: 32-bit Windows has never worked for ImpactX. ImpactX's own
+          # bundled (C++) openPMD is built without a working HDF5 backend on
+          # win32 -- a local 32-bit HDF5 build/link issue -- so the BeamMonitor
+          # write (backend="h5") fails inside sim.track_particles() with
+          # "openPMD-api built without support for backend 'HDF5'". (The
+          # openpmd-api PyPI wheel itself DOES ship HDF5 on win32; this is purely
+          # our bundled build.) A working 32-bit Windows HDF5 build lives in
+          # openPMD-api (branch `wheels`); port it in a later PR. Re-enable by
+          # uncommenting.
           #- name: 32bit Windows
           #  os: windows-2022
           #  arch: "x86"
