@@ -378,11 +378,26 @@ if [ "${1:-}" = "wasm" ]; then
     # static => no wheel-repair step.
     export AMREX_SHARED="OFF"
 
+    # Hide every bundled dependency's symbols on wasm. Pyodide loads the
+    # extensions as Emscripten side modules into one global namespace; a dep
+    # built with default visibility GOT-exports its symbols, and a co-loaded
+    # second copy (e.g. the openpmd_api wheel's own HDF5/openPMD) interposes
+    # them -> two HDF5 share one tangled H5_term_library and loop forever at
+    # atexit ("infinite loop closing library" -> wasm OOB). Hidden visibility
+    # makes those calls direct so each wheel keeps its deps private. General on
+    # purpose: future bundled deps (ADIOS2, blosc2, ...) inherit it for free.
+    # EXCEPTION: AMReX -- see above, it is the SHARED runtime and MUST stay
+    # default-visible/exported (hiding it breaks amrex<->impactx sharing), so it
+    # is rebuilt below with -fvisibility=default (the last -fvisibility wins).
+    export CFLAGS="${CFLAGS:+${CFLAGS} }-fvisibility=hidden"
+    export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-fvisibility=hidden"
+
     install_pyessentials
     build_zlib
     build_hdf5_cmake
     build_fftw
-    build_amrex
+    CFLAGS="${CFLAGS} -fvisibility=default" CXXFLAGS="${CXXFLAGS} -fvisibility=default" \
+        build_amrex
 
     # Static HDF5's CMake config exposes its zlib dependency (ZLIB::ZLIB) but
     # omits find_dependency(ZLIB), so the final wheel link would drop libz. Define
