@@ -16,9 +16,12 @@ probe localizes it WITHOUT taking the parent process down with it:
      The last "STEP:" line printed before the child dies names the faulting
      import; faulthandler prints the Python frame of the fault.
   2. If the child crashed and cdb.exe (Windows SDK Debugging Tools) is present,
-     re-run the same sequence under cdb to get a NATIVE backtrace -- which names
-     the crashing module (amrex_3d / impactx_pybind / bundled openPMD / HDF5),
-     even without symbols (module+offset).
+     run it under cdb to get a NATIVE backtrace -- which names the crashing
+     module (amrex_3d / impactx_pybind / bundled openPMD / HDF5), even without
+     symbols (module+offset). The venv's python.exe is a LAUNCHER that re-spawns
+     the real interpreter as a child, which cdb would not follow, so we debug
+     the BASE interpreter directly (sys._base_executable) with the venv
+     site-packages injected via PYTHONPATH; plus a child-debugging (-o) fallback.
   3. If the imports survive (e.g. win32, which faults at the HDF5 write rather
      than at import), run the real smoke_example.py so the same Windows test
      command also validates the openPMD/HDF5 co-load round-trip end to end.
@@ -85,29 +88,45 @@ def find_cdb():
     return None
 
 
+def cdb_backtrace(cdb, label, argv, env):
+    """Run argv under cdb, break on the first-chance access violation, dump the
+    faulting + all-thread stacks. No symbol server (avoid a network hang) --
+    module+offset already names the crashing DLL."""
+    cmds = ("sxe av; g; .echo ===CRASH===; .lastevent; .exr -1; .ecxr; "
+            "kb 200; .echo ===ALL THREADS===; ~*kb; q")
+    full = [cdb, "-g", "-G", "-o", "-c", cmds] + argv
+    print("\n=== cdb backtrace [%s]: %s" % (label, " ".join(full)), flush=True)
+    try:
+        p = subprocess.run(full, capture_output=True, text=True, timeout=900,
+                           env=env)
+        print(p.stdout, flush=True)
+        print(p.stderr, flush=True)
+    except subprocess.TimeoutExpired:
+        print("(cdb timed out)", flush=True)
+
+
 def main():
     py = sys.executable
     rc = run([py, "-X", "faulthandler", "-c", CHILD])
     if rc != 0:
         cdb = find_cdb()
         if cdb:
-            # No symbol server (avoid network hang); module+offset is enough to
-            # name the crashing DLL. Break on the unhandled AV, dump all stacks.
-            env_no_symsrv = dict(os.environ, _NT_SYMBOL_PATH="")
-            # `sxe av`: break on the access violation at FIRST chance (don't rely
-            # on cdb's default filter); then dump the faulting + all threads.
-            cmds = ("sxe av; g; .echo ===CRASH===; .lastevent; .exr -1; .ecxr; "
-                    "kb 200; .echo ===ALL THREADS===; ~*kb; q")
-            print("\n=== cdb native backtrace via %s" % cdb, flush=True)
-            try:
-                p = subprocess.run(
-                    [cdb, "-g", "-G", "-c", cmds, py, "-c", CHILD],
-                    capture_output=True, text=True, timeout=900,
-                    env=env_no_symsrv)
-                print(p.stdout, flush=True)
-                print(p.stderr, flush=True)
-            except subprocess.TimeoutExpired:
-                print("(cdb timed out)", flush=True)
+            import site
+            no_symsrv = dict(os.environ, _NT_SYMBOL_PATH="")
+            # (A) Debug the BASE interpreter directly so cdb owns the crashing
+            #     process (the venv python.exe just re-launches it as a child).
+            #     Inject the venv site-packages so the imports still resolve.
+            base = getattr(sys, "_base_executable", None) or py
+            sp = list(site.getsitepackages()) + [
+                os.path.join(sys.prefix, "Lib", "site-packages")]
+            env_a = dict(no_symsrv, PYTHONPATH=os.pathsep.join(sp))
+            cdb_backtrace(cdb, "base-exe+PYTHONPATH",
+                          [base, "-X", "faulthandler", "-c", CHILD], env_a)
+            # (B) Fallback: debug the venv launcher but follow child processes
+            #     (-o), in case (A)'s base/site-packages reconstruction is off.
+            if base != py:
+                cdb_backtrace(cdb, "venv+childdbg",
+                              [py, "-X", "faulthandler", "-c", CHILD], no_symsrv)
         else:
             print("\n(no cdb.exe found; faulthandler output above is the lead)",
                   flush=True)
