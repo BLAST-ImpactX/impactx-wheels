@@ -235,21 +235,27 @@ jobs:
         # ImpactX defaults Python IPO/LTO to ON; on Windows that enables /GL+/LTCG
         # via pybind11 and trips an MSVC ICE in WakeConvolution.cpp -> force off.
         # CFLAGS/CXXFLAGS carry /arch:AVX2 on AMD64 only (empty on Win32).
-        # openPMD's HDF5 backend: HDF5 is built by library_builders.bat into
-        # C:\Program Files (x86)\HDF5, but it must be on CMAKE_PREFIX_PATH for
-        # find_package(HDF5) to see it AND openPMD_USE_HDF5 forced ON (else
-        # openPMD silently configures without HDF5 -> BeamMonitor h5 write fails
-        # at runtime). Mirrors the openPMD-api PyPI wheels builder. Forward
-        # slashes avoid backslash list-escaping in the ;-separated path.
+        # openPMD's HDF5 backend: HDF5 is built static by library_builders.bat
+        # into C:\Program Files (x86)\HDF5 and must be on CMAKE_PREFIX_PATH for
+        # find_package(HDF5); openPMD_USE_HDF5 forced ON (else openPMD silently
+        # configures without HDF5 -> BeamMonitor h5 write fails at runtime).
+        # CRITICAL: HDF5_USE_STATIC_LIBRARIES must reach CMake as a -D variable.
+        # openPMD-api's own setup.py reads the env var and passes it through, but
+        # here ImpactX's setup.py drives the build (openPMD is a CMake subproject),
+        # so it must be forwarded via IMPACTX_CMAKE_. Without it, find_package(HDF5)
+        # runs in SHARED mode and injects -DH5_BUILT_AS_DYNAMIC_LIB into openPMD's
+        # compile -> dllimport __imp_H5* that the static libhdf5.lib cannot resolve
+        # (LNK2019/LNK1120). With it, H5_DLL is empty (HDF5's MSVC default) and the
+        # static link resolves. Forward slashes avoid backslash list-escaping.
         CIBW_ENVIRONMENT_WINDOWS: >
-          HDF5_USE_STATIC_LIBRARIES='ON'
+          IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
           IMPACTX_AMREX_INTERNAL='OFF'
           IMPACTX_COMPUTE='NOACC'
           IMPACTX_FFT='ON'
           IMPACTX_CMAKE_openPMD_USE_HDF5='ON'
-          CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }} /DH5_BUILT_AS_STATIC_LIB'
-          CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }} /DH5_BUILT_AS_STATIC_LIB'
+          CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
+          CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
           CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF'
           CMAKE_PREFIX_PATH='C:/Program Files (x86)/AMReX;C:/Program Files (x86)/fftw;C:/Program Files (x86)/HDF5;C:/Program Files (x86)/zlib'
         # pyAMReX links the shared AMReX runtime on Windows -> vendor that DLL,
