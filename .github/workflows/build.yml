@@ -206,9 +206,13 @@ jobs:
         # ImpactX wheel: sequential CPU (NOACC), FFT on, external static AMReX
         # (built by library_builders.sh), static HDF5/zlib. SIMD and the x86_64
         # march/mtune flags are per-arch: AMREX_SIMD drives the external AMReX
-        # build, IMPACTX_SIMD the wheel.
+        # build, IMPACTX_SIMD the wheel. HDF5_USE_STATIC_LIBRARIES is forwarded as
+        # a real CMake -D (IMPACTX_CMAKE_ prefix) so find_package(HDF5) selects the
+        # static libs on every platform -- we build HDF5 static everywhere, so this
+        # is the correct setting; it is REQUIRED on Windows to avoid dllimport (see
+        # the CIBW_ENVIRONMENT_WINDOWS note) and correct-but-inert elsewhere.
         CIBW_ENVIRONMENT: >
-          HDF5_USE_STATIC_LIBRARIES='ON'
+          IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
           IMPACTX_AMREX_INTERNAL='OFF'
           IMPACTX_COMPUTE='NOACC'
@@ -222,7 +226,7 @@ jobs:
         # The zlibfix defines ZLIB::ZLIB so static HDF5 links libz (HDF5 omits
         # find_dependency(ZLIB); fixed upstream in openPMD-api#1894 for >0.17.1).
         CIBW_ENVIRONMENT_PYODIDE: >
-          HDF5_USE_STATIC_LIBRARIES='ON'
+          IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
           IMPACTX_AMREX_INTERNAL='OFF'
           IMPACTX_COMPUTE='NOACC'
