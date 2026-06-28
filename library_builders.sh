@@ -264,6 +264,11 @@ function build_hdf5_cmake {
     PATH=${CMAKE_BIN}:${PATH} emcmake cmake -S hdf5-${HDF5_VERSION} -B build-hdf5 \
         -DCMAKE_BUILD_TYPE=Release                     \
         -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}         \
+        `# Force hidden visibility on HDF5 itself (the general CFLAGS env can be` \
+        `# clobbered). Static HDF5 leaves H5_DLL empty, so this makes the H5*` \
+        `# symbols hidden -> not GOT-exported -> no cross-bind with a co-loaded` \
+        `# second HDF5 (openpmd_api wheel) -> no atexit teardown loop.` \
+        -DCMAKE_C_FLAGS="-fvisibility=hidden"          \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON           \
         -DCMAKE_EXECUTABLE_SUFFIX_C=                   \
         -DBUILD_SHARED_LIBS=OFF                        \
@@ -391,6 +396,26 @@ if [ "${1:-}" = "wasm" ]; then
     # is rebuilt below with -fvisibility=default (the last -fvisibility wins).
     export CFLAGS="${CFLAGS:+${CFLAGS} }-fvisibility=hidden"
     export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-fvisibility=hidden"
+
+    # openPMD source fixes for the WASM co-load that are not yet in the 0.17.1
+    # release tag ImpactX fetches. Build openPMD from a locally-patched clone
+    # (ImpactX points at it via IMPACTX_CMAKE_ImpactX_openpmd_src in build.yml):
+    #   * openPMD-api#1900 -- H5dont_atexit() at load. ImpactX loads and writes
+    #     the openPMD/HDF5 series FIRST, so ITS openPMD must set HDF5's
+    #     (interposed) "skip atexit" flag before the co-loaded openpmd_api wheel's
+    #     HDF5 inits, else the two HDF5 copies loop forever at atexit -> OOB.
+    #   * openPMD-api#1902 -- guard the HDF5 read type-detection's tri-state
+    #     H5Tequal() with `> 0`; a wasm-invalid 80-bit long-double type otherwise
+    #     makes H5Tequal return <0 (an error), read as "equal", so every string
+    #     attribute (incl. the 'openPMD' version) is mis-decoded as LONG_DOUBLE.
+    # Drop once the openPMD pin advances past these fixes.
+    OPENPMD_SRC="/tmp/impactx-openpmd-src"
+    if [ ! -d "${OPENPMD_SRC}" ]; then
+        git clone --depth 1 --branch 0.17.1 \
+            https://github.com/openPMD/openPMD-api.git "${OPENPMD_SRC}"
+        patch -p1 -d "${OPENPMD_SRC}" < .github/openpmd-h5dont-atexit-wasm.patch
+        patch -p1 -d "${OPENPMD_SRC}" < .github/openpmd-read-h5tequal-tristate.patch
+    fi
 
     install_pyessentials
     build_zlib
