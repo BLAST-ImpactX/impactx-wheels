@@ -236,6 +236,7 @@ jobs:
           IMPACTX_BUILD_SHARED_LIBS='OFF'
           AMREX_SIMD='OFF'
           IMPACTX_CMAKE_CMAKE_PROJECT_TOP_LEVEL_INCLUDES='/tmp/impactx-zlibfix.cmake'
+          IMPACTX_CMAKE_ImpactX_openpmd_src='/tmp/impactx-openpmd-src'
         # ImpactX defaults Python IPO/LTO to ON; on Windows that enables /GL+/LTCG
         # via pybind11 and trips an MSVC ICE in WakeConvolution.cpp -> force off.
         # CFLAGS/CXXFLAGS carry /arch:AVX2 on AMD64 only (empty on Win32).
