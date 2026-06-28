@@ -413,6 +413,19 @@ if(NOT TARGET ZLIB::ZLIB)
         INTERFACE_INCLUDE_DIRECTORIES "${BUILD_PREFIX}/include")
 endif()
 link_libraries(ZLIB::ZLIB)
+
+# WASM co-load: hide EVERY in-tree symbol (impactx core, ablastr, AND the openPMD
+# template instantiations that land in those default-visibility targets) so they
+# do not GOT-export and cross-bind with the co-loaded openpmd_api wheel in
+# Pyodide's single namespace -> avoids HDF5's atexit "infinite loop closing
+# library" -> OOB. wasm-ld has no --exclude-libs; this top-level include runs
+# before any target, so add_compile_options is GLOBAL and (unlike CXXFLAGS) is
+# not clobbered by pyodide-build. openPMD's public-API macro defaults to
+# visibility("default") and would override the hide, so neutralize it. AMReX is
+# an EXTERNAL archive (unaffected here) -> its own export macro keeps it exported
+# = the one shared runtime. PyInit stays exported (pybind11/Emscripten).
+add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden)
+add_compile_definitions(OPENPMDAPI_EXPORT=)
 EOF
 
 else
