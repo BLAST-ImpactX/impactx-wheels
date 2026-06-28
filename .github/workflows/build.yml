@@ -252,6 +252,15 @@ jobs:
         # compile -> dllimport __imp_H5* that the static libhdf5.lib cannot resolve
         # (LNK2019/LNK1120). With it, H5_DLL is empty (HDF5's MSVC default) and the
         # static link resolves. Forward slashes avoid backslash list-escaping.
+        # _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR (CXXFLAGS): VS 2022 17.10 made
+        # std::mutex's constructor constexpr, leaving its internals NULL until
+        # first use. We --exclude msvcp*.dll from the wheel (heap-safety vs
+        # co-loaded extensions, below), so the SYSTEM msvcp140.dll runs at import
+        # time; if it predates 17.10 it NULL-derefs in Mtx_destroy -- which is the
+        # amrex_3d_pybind import access-violation (0xC0000005 read @0 in
+        # MSVCP140!Mtx_destroy). The define reverts to the non-constexpr ctor,
+        # ABI-compatible with any msvcp140. Inherited by AMReX (BEFORE_BUILD),
+        # pyAMReX, ImpactX and openPMD alike.
         CIBW_ENVIRONMENT_WINDOWS: >
           IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
@@ -260,7 +269,7 @@ jobs:
           IMPACTX_FFT='ON'
           IMPACTX_CMAKE_openPMD_USE_HDF5='ON'
           CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
-          CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
+          CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }} /D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR'
           CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF'
           CMAKE_PREFIX_PATH='C:/Program Files (x86)/AMReX;C:/Program Files (x86)/fftw;C:/Program Files (x86)/HDF5;C:/Program Files (x86)/zlib'
         # pyAMReX links the shared AMReX runtime on Windows -> vendor that DLL,
