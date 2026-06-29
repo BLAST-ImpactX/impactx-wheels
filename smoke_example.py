@@ -111,6 +111,10 @@ def main():
     # unwinding and H5Tclose would fault ("not a datatype" -> wasm OOB).
     gc.collect()
     analyze(npart)
+    # likewise release openpmd_api's read Series + HDF5 handler now, while HDF5 is
+    # still alive, rather than at interpreter teardown alongside the co-loaded
+    # second HDF5 (where H5Tclose faults: "not a datatype" -> wasm OOB).
+    gc.collect()
     return 0
 
 
