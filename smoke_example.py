@@ -18,6 +18,7 @@ share one AMReX runtime.
 
 Usage:  python smoke_example.py
 """
+import gc
 import os
 import sys
 import tempfile
@@ -102,7 +103,14 @@ def analyze(npart):
 
 def main():
     os.chdir(tempfile.mkdtemp(prefix="impactx-smoke-"))  # diags/ go here
-    analyze(run_fodo())
+    npart = run_fodo()
+    # run_fodo()'s ImpactX + BeamMonitor locals are out of scope now; force their
+    # collection so ImpactX's bundled-openPMD HDF5 handler (and its custom types:
+    # bool enum, complex *, long double) is destroyed HERE, while HDF5 is alive --
+    # not at interpreter teardown, when the co-loaded openpmd_api HDF5 is also
+    # unwinding and H5Tclose would fault ("not a datatype" -> wasm OOB).
+    gc.collect()
+    analyze(npart)
     return 0
 
 
