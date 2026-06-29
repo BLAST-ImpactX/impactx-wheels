@@ -1,0 +1,23 @@
+From 1669142e94eb1e02bf41baf6076531bcb0923b6e Mon Sep 17 00:00:00 2001
+From: Axel Huebl <axel.huebl@plasma.ninja>
+Date: Fri, 26 Jun 2026 12:12:47 -0700
+Subject: [PATCH] openPMD-api: 0.17.1
+
+Build in superbuild, but do not require, the lastest.
+---
+ cmake/dependencies/ABLASTR.cmake | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/cmake/dependencies/ABLASTR.cmake b/cmake/dependencies/ABLASTR.cmake
+index b25f9f316..d5b6483bc 100644
+--- a/cmake/dependencies/ABLASTR.cmake
++++ b/cmake/dependencies/ABLASTR.cmake
+@@ -194,7 +194,7 @@ set(ImpactX_amrex_branch "c5d27c8ff1b7b32238ebc75a9642a3fc36e65e9c"
+ set(ImpactX_openpmd_repo "https://github.com/openPMD/openPMD-api.git"
+     CACHE STRING
+     "Repository URI to pull and build openPMD-api from if(ImpactX_openpmd_internal)")
+-set(ImpactX_openpmd_branch "0.17.0"
++set(ImpactX_openpmd_branch "0.17.1"
+     CACHE STRING
+     "Repository branch for ImpactX_openPMD_repo if(ImpactX_openpmd_internal)")
+ 

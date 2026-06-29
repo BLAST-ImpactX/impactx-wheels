@@ -19,8 +19,11 @@ repos:
     hooks:
     - id: trailing-whitespace
       args: [--markdown-linebreak-ext=md]
+      exclude: '\.patch$'
     - id: end-of-file-fixer
+      exclude: '\.patch$'
     - id: mixed-line-ending
+      exclude: '\.patch$'
     - id: check-json
     - id: check-toml
     - id: check-yaml

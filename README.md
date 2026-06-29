@@ -27,6 +27,30 @@ reasonably modern CPU (year 2016 or newer):
 - **arm64 / aarch64** Linux/Apple Silcon macOS: all ARMv8-A and newer supported
 - **x86-32** 32-bit Linux: all CPUs supported (no SIMD)
 
+## WebAssembly (Pyodide / browser)
+
+We also publish a **WebAssembly** wheel (`wasm32-emscripten`) under the
+[PEP 783 `pyemscripten`](https://peps.python.org/pep-0783/) platform tag, so ImpactX can run
+in the browser and in Node.js via [Pyodide](https://pyodide.org):
+
+```python
+import micropip
+await micropip.install("impactx-noacc")
+```
+
+This build includes openPMD/HDF5 I/O and the FFT-based solvers (IGF space charge, CSR).
+
+Limitations of the WebAssembly wheel:
+
+- **Single core only.** Stock Pyodide cannot load thread-enabled (`-pthread`) modules, so the
+  wheel is built `IMPACTX_COMPUTE=NOACC` (no OpenMP). Multi-threading would require a custom
+  from-source, threaded Pyodide served with cross-origin-isolation (COOP/COEP) headers.
+- **No explicit SIMD.** Although [WebAssembly SIMD](https://emscripten.org/docs/porting/simd.html)
+  (128-bit, part of the WebAssembly 3.0 standard) is widely available, it lacks vectorized
+  transcendentals, so `ImpactX_SIMD=ON` is *slower* than scalar on WASM (CI benchmark: ~2.6x
+  slower on a compute-bound nonlinear element). The wheel therefore ships as baseline wasm.
+- No MPI (multi-node) and no GPU support — as for the other pip wheels above.
+
 ## Documentation
 
 Please see the online documentation for detailed examples, references, theory sections on our models, and how-to guides:
