@@ -295,7 +295,7 @@ jobs:
         # smoke_example.py -- runs a FODO example and reads its openPMD monitor
         # with the openpmd_api wheel co-loaded in the same process.
         # Pyodide runs in a node sandbox (no pytest CLI) -> check is best-effort.
-        CIBW_TEST_REQUIRES: pytest numpy openpmd-api
+        CIBW_TEST_REQUIRES: pytest numpy openpmd-api h5py
         CIBW_TEST_COMMAND: >
           python {project}/.github/check_wheel_libs.py &&
           pytest {project}/tests/python/test_push.py &&
@@ -309,7 +309,7 @@ jobs:
         CIBW_TEST_COMMAND_WINDOWS: >
           python {project}/.github/check_wheel_libs.py &&
           python {project}/.github/win_debug.py
-        CIBW_TEST_REQUIRES_PYODIDE: numpy openpmd-api
+        CIBW_TEST_REQUIRES_PYODIDE: numpy openpmd-api h5py
         CIBW_TEST_COMMAND_PYODIDE: >
           python {project}/.github/check_wheel_libs.py || true;
           python {project}/.github/smoke_example.py

@@ -9,7 +9,7 @@
 FODO example and read its openPMD beam-monitor diagnostics back -- in ONE
 process.
 
-This co-loads the impactx and openpmd_api wheels (each shipping compiled C++)
+This co-loads impactx, openpmd_api and h5py -- each ships its own compiled HDF5
 and crosses the C++ <-> Python (numpy) boundary by reading the monitor -- the
 path that crashed on macOS when impactx re-exported its bundled openPMD/HDF5
 (fixed by impactx#1538) and on Windows when a wheel vendored the MSVC runtime
@@ -101,6 +101,19 @@ def analyze(npart):
           % (npart, len(steps), sigx))
 
 
+def check_h5py():
+    """Co-load a THIRD independently-bundled HDF5 (h5py) in the same process and
+    round-trip a file -- exercises impactx + openpmd_api + h5py co-loaded."""
+    import h5py
+
+    with h5py.File("h5py_check.h5", "w") as f:
+        f["x"] = np.arange(8, dtype=np.float64)
+    with h5py.File("h5py_check.h5", "r") as f:
+        assert f["x"].shape == (8,), f["x"].shape
+    print("h5py co-load OK: h5py %s (HDF5 %s)"
+          % (h5py.__version__, h5py.version.hdf5_version))
+
+
 def main():
     os.chdir(tempfile.mkdtemp(prefix="impactx-smoke-"))  # diags/ go here
     npart = run_fodo()
@@ -115,6 +128,7 @@ def main():
     # still alive, rather than at interpreter teardown alongside the co-loaded
     # second HDF5 (where H5Tclose faults: "not a datatype" -> wasm OOB).
     gc.collect()
+    check_h5py()
     return 0
 
 
