@@ -223,9 +223,9 @@ jobs:
           CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
           PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
         # Pyodide overrides: single-core NOACC, MPI off, no SIMD (slower on WASM).
-        # LTO is forced off (below): with it, pyodide's whole-archive -sSIDE_MODULE=1
-        # re-exports the bundled HDF5, so co-loaded openpmd_api/h5py cross-bind and
-        # fault at teardown (-fvisibility=hidden isolates HDF5 only without LTO).
+        # LTO stays ON (default) for pybind11 perf: the co-load teardown guard is
+        # H5dont_atexit in the bundled openPMD, independent of LTO and of whether
+        # pyodide's -sSIDE_MODULE=1 wins over our =2.
         # The zlibfix defines ZLIB::ZLIB so static HDF5 links libz (HDF5 omits
         # find_dependency(ZLIB); fixed upstream in openPMD-api#1894 for >0.17.1).
         CIBW_ENVIRONMENT_PYODIDE: >
@@ -240,7 +240,6 @@ jobs:
           AMREX_SIMD='OFF'
           IMPACTX_CMAKE_CMAKE_PROJECT_TOP_LEVEL_INCLUDES='/tmp/impactx-zlibfix.cmake'
           IMPACTX_CMAKE_ImpactX_openpmd_src='/tmp/impactx-openpmd-src'
-          CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF'
         # ImpactX defaults Python IPO/LTO to ON; on Windows that enables /GL+/LTCG
         # via pybind11 and trips an MSVC ICE in WakeConvolution.cpp -> force off.
         # CFLAGS/CXXFLAGS carry /arch:AVX2 on AMD64 only (empty on Win32).
