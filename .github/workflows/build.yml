@@ -223,6 +223,9 @@ jobs:
           CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
           PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
         # Pyodide overrides: single-core NOACC, MPI off, no SIMD (slower on WASM).
+        # LTO is forced off (below): with it, pyodide's whole-archive -sSIDE_MODULE=1
+        # re-exports the bundled HDF5, so co-loaded openpmd_api/h5py cross-bind and
+        # fault at teardown (-fvisibility=hidden isolates HDF5 only without LTO).
         # The zlibfix defines ZLIB::ZLIB so static HDF5 links libz (HDF5 omits
         # find_dependency(ZLIB); fixed upstream in openPMD-api#1894 for >0.17.1).
         CIBW_ENVIRONMENT_PYODIDE: >
@@ -296,7 +299,9 @@ jobs:
         # smoke_example.py -- runs a FODO example and reads its openPMD monitor
         # with the openpmd_api wheel co-loaded in the same process.
         # Pyodide runs in a node sandbox (no pytest CLI) -> check is best-effort.
-        CIBW_TEST_REQUIRES: pytest numpy openpmd-api h5py
+        # h5py has no 32-bit wheels and can't build from source in-CI, so co-load
+        # it only on the 64-bit native legs (wasm gets it via PYODIDE below).
+        CIBW_TEST_REQUIRES: "${{ (matrix.arch == 'i686' || matrix.arch == 'x86') && 'pytest numpy openpmd-api' || 'pytest numpy openpmd-api h5py' }}"
         CIBW_TEST_COMMAND: >
           python {project}/.github/check_wheel_libs.py &&
           pytest {project}/tests/python/test_push.py &&

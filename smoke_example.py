@@ -128,7 +128,13 @@ def main():
     # still alive, rather than at interpreter teardown alongside the co-loaded
     # second HDF5 (where H5Tclose faults: "not a datatype" -> wasm OOB).
     gc.collect()
-    check_h5py()
+    # h5py ships no 32-bit wheels. wasm32 is 32-bit too but Pyodide provides h5py,
+    # so run the h5py co-load everywhere except 32-bit NATIVE builds (i686, win32).
+    on_32bit_native = sys.maxsize < 2**32 and sys.platform != "emscripten"
+    if on_32bit_native:
+        print("32-bit native -- h5py ships no 32-bit wheel; skipping h5py co-load")
+    else:
+        check_h5py()
     return 0
 
 
