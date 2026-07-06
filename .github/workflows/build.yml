@@ -305,7 +305,8 @@ jobs:
         CIBW_TEST_COMMAND: >
           python {project}/.github/check_wheel_libs.py &&
           pytest {project}/tests/python/test_push.py &&
-          python {project}/.github/smoke_example.py
+          python {project}/.github/smoke_example.py &&
+          python {project}/.github/smoke_example.py --with-h5py
         # DEBUG (temporary, win64 only): localize the `import impactx` access
         # violation. check_wheel_libs.py now resolves the delvewheel-bundled
         # amrex DLL (proves packaging is fine), then win_debug.py runs the
@@ -318,7 +319,8 @@ jobs:
         CIBW_TEST_REQUIRES_PYODIDE: numpy openpmd-api h5py
         CIBW_TEST_COMMAND_PYODIDE: >
           python {project}/.github/check_wheel_libs.py || true;
-          python {project}/.github/smoke_example.py
+          python {project}/.github/smoke_example.py &&
+          python {project}/.github/smoke_example.py --with-h5py
         # Show a bit more output (pip -v)
         CIBW_BUILD_VERBOSITY: 1
       run: |

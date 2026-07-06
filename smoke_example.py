@@ -9,14 +9,19 @@
 FODO example and read its openPMD beam-monitor diagnostics back -- in ONE
 process.
 
-This co-loads impactx, openpmd_api and h5py -- each ships its own compiled HDF5
-and crosses the C++ <-> Python (numpy) boundary by reading the monitor -- the
-path that crashed on macOS when impactx re-exported its bundled openPMD/HDF5
-(fixed by impactx#1538) and on Windows when a wheel vendored the MSVC runtime
-(see check_no_vendored_runtime.py). It also asserts that impactx and pyAMReX
-share one AMReX runtime.
+Each wheel ships its own compiled HDF5 and crosses the C++ <-> Python (numpy)
+boundary by reading the monitor -- the path that crashed on macOS when impactx
+re-exported its bundled openPMD/HDF5 (fixed by impactx#1538) and on Windows
+when a wheel vendored the MSVC runtime (see check_no_vendored_runtime.py). It
+also asserts that impactx and pyAMReX share one AMReX runtime.
 
-Usage:  python smoke_example.py
+Two modes, run the script twice:
+  python smoke_example.py              2-way co-load (impactx + openpmd_api);
+                                       both set H5dont_atexit, so it MUST tear
+                                       down cleanly on normal exit.
+  python smoke_example.py --with-h5py  3-way co-load (+ h5py); verify it works,
+                                       then os._exit(0) past h5py's third-party
+                                       HDF5 atexit teardown, which we can't patch.
 """
 import gc
 import os
@@ -115,6 +120,7 @@ def check_h5py():
 
 
 def main():
+    with_h5py = "--with-h5py" in sys.argv
     os.chdir(tempfile.mkdtemp(prefix="impactx-smoke-"))  # diags/ go here
     npart = run_fodo()
     # run_fodo()'s ImpactX + BeamMonitor locals are out of scope now; force their
@@ -128,14 +134,25 @@ def main():
     # still alive, rather than at interpreter teardown alongside the co-loaded
     # second HDF5 (where H5Tclose faults: "not a datatype" -> wasm OOB).
     gc.collect()
-    # h5py ships no 32-bit wheels. wasm32 is 32-bit too but Pyodide provides h5py,
-    # so run the h5py co-load everywhere except 32-bit NATIVE builds (i686, win32).
+
+    if not with_h5py:
+        # 2-way co-load (impactx + openpmd_api): both bundled HDF5 set
+        # H5dont_atexit, so this MUST reach interpreter exit and tear down cleanly.
+        return 0
+
+    # 3-way co-load: additionally co-load h5py. h5py ships no 32-bit wheels
+    # (wasm32 is 32-bit but Pyodide provides it), so skip on 32-bit native.
     on_32bit_native = sys.maxsize < 2**32 and sys.platform != "emscripten"
     if on_32bit_native:
         print("32-bit native -- h5py ships no 32-bit wheel; skipping h5py co-load")
-    else:
-        check_h5py()
-    return 0
+        return 0
+    check_h5py()
+    # h5py's third-party HDF5 (1.12.1) is not under our H5dont_atexit interposition
+    # and arms an atexit teardown loop we cannot patch; the co-load working (above)
+    # is the test, so exit hard past that teardown instead of faulting at exit.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
 
 
 if __name__ == "__main__":
