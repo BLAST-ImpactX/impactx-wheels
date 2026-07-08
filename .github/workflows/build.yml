@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 env:
   SRC_REF: '26.08'
-  COMMON_PATCHES: '.github/cmakelists-export-pyinit-impactx.patch .github/setup-py-version-post1-impactx.patch .github/ablastr-openpmd-0.17.1-impactx.patch .github/cmakelists-openpmd-visibility-emscripten-impactx.patch'
+  COMMON_PATCHES: '.github/cmakelists-export-pyinit-impactx.patch .github/setup-py-version-post1-impactx.patch .github/ablastr-openpmd-0.17.1-impactx.patch'
 
 jobs:
   build_wheels:
@@ -63,10 +63,6 @@ jobs:
           - name: 64bit Windows
             os: windows-2022
             arch: "AMD64"
-            # DEBUG (temporary): build a single interpreter to iterate the win64
-            # `import impactx` access violation faster. Restore to all CPythons
-            # (delete this `build:` line) before merge.
-            build: "cp311-win_amd64"
             env:
               # Explicit SIMD (vir-simd) needs clang/gcc builtins, not MSVC, so SIMD stays OFF.
               # We still target AVX2 via MSVC codegen (/arch:AVX2): scalar FMA + auto-vectorization.
@@ -75,16 +71,9 @@ jobs:
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
           # x86 (32bit)
-          # Re-enabled to validate the HDF5 fix: ImpactX's bundled openPMD was
-          # built without the HDF5 backend on Windows because HDF5 was missing
-          # from CMAKE_PREFIX_PATH (and openPMD_USE_HDF5 not forced), so the
-          # BeamMonitor write failed at sim.track_particles(). Fixed in
-          # CIBW_ENVIRONMENT_WINDOWS below, mirroring the openPMD-api builder.
-          # DEBUG (temporary): one interpreter only for speed.
           - name: 32bit Windows
             os: windows-2022
             arch: "x86"
-            build: "cp311-win32"
             env:
               SIMD: "OFF"
               CMAKE_GENERATOR: "Visual Studio 17 2022"
@@ -223,9 +212,9 @@ jobs:
           CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
           PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
         # Pyodide overrides: single-core NOACC, MPI off, no SIMD (slower on WASM).
-        # LTO stays ON (default) for pybind11 perf: the co-load teardown guard is
-        # H5dont_atexit in the bundled openPMD, independent of LTO and of whether
-        # pyodide's -sSIDE_MODULE=1 wins over our =2.
+        # LTO stays ON (default) for pybind11 perf: the wasm co-load is guarded by
+        # H5dont_atexit in the bundled openPMD, independent of LTO (and of symbol
+        # export -- Pyodide's -sSIDE_MODULE=1 exports everything regardless).
         # The zlibfix defines ZLIB::ZLIB so static HDF5 links libz (HDF5 omits
         # find_dependency(ZLIB); fixed upstream in openPMD-api#1894 for >0.17.1).
         CIBW_ENVIRONMENT_PYODIDE: >
@@ -240,30 +229,17 @@ jobs:
           AMREX_SIMD='OFF'
           IMPACTX_CMAKE_CMAKE_PROJECT_TOP_LEVEL_INCLUDES='/tmp/impactx-zlibfix.cmake'
           IMPACTX_CMAKE_ImpactX_openpmd_src='/tmp/impactx-openpmd-src'
-        # ImpactX defaults Python IPO/LTO to ON; on Windows that enables /GL+/LTCG
-        # via pybind11 and trips an MSVC ICE in WakeConvolution.cpp -> force off.
-        # CFLAGS/CXXFLAGS carry /arch:AVX2 on AMD64 only (empty on Win32).
-        # openPMD's HDF5 backend: HDF5 is built static by library_builders.bat
-        # into C:\Program Files (x86)\HDF5 and must be on CMAKE_PREFIX_PATH for
-        # find_package(HDF5); openPMD_USE_HDF5 forced ON (else openPMD silently
-        # configures without HDF5 -> BeamMonitor h5 write fails at runtime).
-        # CRITICAL: HDF5_USE_STATIC_LIBRARIES must reach CMake as a -D variable.
-        # openPMD-api's own setup.py reads the env var and passes it through, but
-        # here ImpactX's setup.py drives the build (openPMD is a CMake subproject),
-        # so it must be forwarded via IMPACTX_CMAKE_. Without it, find_package(HDF5)
-        # runs in SHARED mode and injects -DH5_BUILT_AS_DYNAMIC_LIB into openPMD's
-        # compile -> dllimport __imp_H5* that the static libhdf5.lib cannot resolve
-        # (LNK2019/LNK1120). With it, H5_DLL is empty (HDF5's MSVC default) and the
-        # static link resolves. Forward slashes avoid backslash list-escaping.
-        # _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR (CXXFLAGS): VS 2022 17.10 made
-        # std::mutex's constructor constexpr, leaving its internals NULL until
-        # first use. We --exclude msvcp*.dll from the wheel (heap-safety vs
-        # co-loaded extensions, below), so the SYSTEM msvcp140.dll runs at import
-        # time; if it predates 17.10 it NULL-derefs in Mtx_destroy -- which is the
-        # amrex_3d_pybind import access-violation (0xC0000005 read @0 in
-        # MSVCP140!Mtx_destroy). The define reverts to the non-constexpr ctor,
-        # ABI-compatible with any msvcp140. Inherited by AMReX (BEFORE_BUILD),
-        # pyAMReX, ImpactX and openPMD alike.
+        # LTO forced off: Windows Python IPO enables /GL+/LTCG (pybind11) and hits
+        # an MSVC ICE in WakeConvolution.cpp. CXXFLAGS carry /arch:AVX2 on AMD64.
+        # HDF5 is built static (library_builders.bat) and must be on
+        # CMAKE_PREFIX_PATH, with openPMD_USE_HDF5 forced ON (else openPMD silently
+        # drops the HDF5 backend). HDF5_USE_STATIC_LIBRARIES must reach CMake as a
+        # real -D (IMPACTX_CMAKE_ prefix, since ImpactX's setup.py drives the
+        # build); without it find_package(HDF5) runs SHARED and emits dllimport
+        # __imp_H5* the static lib cannot resolve (LNK2019).
+        # _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR reverts VS 2022 17.10's constexpr
+        # std::mutex ctor, which NULL-derefs in an older SYSTEM msvcp140.dll (we
+        # --exclude the vendored copy) -- the 0xC0000005 at amrex_3d_pybind import.
         CIBW_ENVIRONMENT_WINDOWS: >
           IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
@@ -306,15 +282,6 @@ jobs:
           pytest {project}/tests/python/test_push.py &&
           python {project}/.github/smoke_example.py &&
           python {project}/.github/smoke_example.py --with-h5py
-        # DEBUG (temporary, win64 only): localize the `import impactx` access
-        # violation. check_wheel_libs.py now resolves the delvewheel-bundled
-        # amrex DLL (proves packaging is fine), then win_debug.py runs the
-        # staged co-load imports in a child process under faulthandler + cdb so
-        # the crash is captured with a backtrace instead of a bare 0xC0000005.
-        # Restore to the shared CIBW_TEST_COMMAND (delete this) before merge.
-        CIBW_TEST_COMMAND_WINDOWS: >
-          python {project}/.github/check_wheel_libs.py &&
-          python {project}/.github/win_debug.py
         CIBW_TEST_REQUIRES_PYODIDE: numpy openpmd-api h5py
         CIBW_TEST_COMMAND_PYODIDE: >
           python {project}/.github/check_wheel_libs.py || true;
