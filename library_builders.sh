@@ -364,6 +364,50 @@ function build_virsimd {
     touch virsimd-stamp
 }
 
+# openPMD-api as an external, static dependency, built once per platform (not
+# once per wheel like the old in-tree subproject) so our patches live in one
+# place. Pinned to 0.17.1 with the co-load source fixes not yet in that tag:
+# openPMD-api#1900 (H5dont_atexit at load, Emscripten-guarded) and #1902 (guard
+# the tri-state H5Tequal with `> 0` in read type-detection; platform-agnostic).
+function build_openpmd {
+    if [ -e openpmd-stamp ]; then return; fi
+
+    OPENPMD_SRC="dep-openpmd"
+    if [ ! -d "${OPENPMD_SRC}" ]; then
+        git clone --depth 1 --branch 0.17.1 \
+            https://github.com/openPMD/openPMD-api.git "${OPENPMD_SRC}"
+        patch -p1 -d "${OPENPMD_SRC}" < .github/openpmd-h5dont-atexit-wasm.patch
+        patch -p1 -d "${OPENPMD_SRC}" < .github/openpmd-read-h5tequal-tristate.patch
+    fi
+
+    PY_BIN=$(which python3)
+    CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
+    # WASM: neutralize openPMD's OPENPMDAPI_EXPORT (= visibility("default")) so its
+    # public API inherits the global -fvisibility=hidden and stays DSO-local.
+    CXXFLAGS="${CXXFLAGS}${EMCMAKE:+ -DOPENPMDAPI_EXPORT=}" \
+    PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake -S ${OPENPMD_SRC} -B build-openpmd \
+        -DCMAKE_BUILD_TYPE=Release             \
+        -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
+        -DCMAKE_PREFIX_PATH=${BUILD_PREFIX}    \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON   \
+        -DBUILD_SHARED_LIBS=OFF                \
+        -DopenPMD_USE_MPI=OFF                  \
+        -DopenPMD_USE_HDF5=ON                  \
+        -DopenPMD_USE_ADIOS2=OFF               \
+        -DopenPMD_USE_PYTHON=OFF               \
+        -DopenPMD_BUILD_TESTING=OFF            \
+        -DopenPMD_BUILD_EXAMPLES=OFF           \
+        -DopenPMD_BUILD_CLI_TOOLS=OFF          \
+        -DHDF5_USE_STATIC_LIBRARIES=ON         \
+        -DZLIB_USE_STATIC_LIBS=ON
+    PATH=${CMAKE_BIN}:${PATH} ${EMMAKE} cmake --build build-openpmd --parallel ${CPU_COUNT}
+    PATH=${CMAKE_BIN}:${PATH} ${EMMAKE} cmake --build build-openpmd --target install
+
+    rm -rf build-openpmd
+
+    touch openpmd-stamp
+}
+
 if [ "${1:-}" = "wasm" ]; then
     # Cross-compile every C/C++ dependency for wasm32-emscripten into the
     # Emscripten sysroot, where the Pyodide wheel build's find_package() picks
@@ -397,29 +441,10 @@ if [ "${1:-}" = "wasm" ]; then
     export CFLAGS="${CFLAGS:+${CFLAGS} }-fvisibility=hidden"
     export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-fvisibility=hidden"
 
-    # openPMD source fixes for the WASM co-load that are not yet in the 0.17.1
-    # release tag ImpactX fetches. Build openPMD from a locally-patched clone
-    # (ImpactX points at it via IMPACTX_CMAKE_ImpactX_openpmd_src in build.yml):
-    #   * openPMD-api#1900 -- H5dont_atexit() at load. ImpactX loads and writes
-    #     the openPMD/HDF5 series FIRST, so ITS openPMD must set HDF5's
-    #     (interposed) "skip atexit" flag before the co-loaded openpmd_api wheel's
-    #     HDF5 inits, else the two HDF5 copies loop forever at atexit -> OOB.
-    #   * openPMD-api#1902 -- guard the HDF5 read type-detection's tri-state
-    #     H5Tequal() with `> 0`; a wasm-invalid 80-bit long-double type otherwise
-    #     makes H5Tequal return <0 (an error), read as "equal", so every string
-    #     attribute (incl. the 'openPMD' version) is mis-decoded as LONG_DOUBLE.
-    # Drop once the openPMD pin advances past these fixes.
-    OPENPMD_SRC="/tmp/impactx-openpmd-src"
-    if [ ! -d "${OPENPMD_SRC}" ]; then
-        git clone --depth 1 --branch 0.17.1 \
-            https://github.com/openPMD/openPMD-api.git "${OPENPMD_SRC}"
-        patch -p1 -d "${OPENPMD_SRC}" < .github/openpmd-h5dont-atexit-wasm.patch
-        patch -p1 -d "${OPENPMD_SRC}" < .github/openpmd-read-h5tequal-tristate.patch
-    fi
-
     install_pyessentials
     build_zlib
     build_hdf5_cmake
+    build_openpmd
     build_fftw
     CFLAGS="${CFLAGS} -fvisibility=default" CXXFLAGS="${CXXFLAGS} -fvisibility=default" \
         build_amrex
@@ -483,6 +508,7 @@ else
     build_fftw
     build_zlib
     build_hdf5
+    build_openpmd
     # explicit SIMD (vir-simd) is requested per-arch via AMREX_SIMD
     if [ "${AMREX_SIMD:-OFF}" = "ON" ]; then
         build_virsimd

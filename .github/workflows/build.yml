@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 env:
   SRC_REF: '26.08'
-  COMMON_PATCHES: '.github/cmakelists-export-pyinit-impactx.patch .github/setup-py-version-post1-impactx.patch .github/ablastr-openpmd-0.17.1-impactx.patch .github/cmakelists-openpmd-visibility-emscripten-impactx.patch'
+  COMMON_PATCHES: '.github/cmakelists-export-pyinit-impactx.patch .github/setup-py-version-post1-impactx.patch'
 
 jobs:
   build_wheels:
@@ -204,6 +204,7 @@ jobs:
           IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
           IMPACTX_AMREX_INTERNAL='OFF'
+          IMPACTX_CMAKE_ImpactX_openpmd_internal='OFF'
           IMPACTX_COMPUTE='NOACC'
           IMPACTX_FFT='ON'
           IMPACTX_SIMD='${{ matrix.env.SIMD || 'ON' }}'
@@ -221,6 +222,7 @@ jobs:
           IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
           IMPACTX_AMREX_INTERNAL='OFF'
+          IMPACTX_CMAKE_ImpactX_openpmd_internal='OFF'
           IMPACTX_COMPUTE='NOACC'
           IMPACTX_FFT='ON'
           IMPACTX_MPI='OFF'
@@ -228,7 +230,6 @@ jobs:
           IMPACTX_BUILD_SHARED_LIBS='OFF'
           AMREX_SIMD='OFF'
           IMPACTX_CMAKE_CMAKE_PROJECT_TOP_LEVEL_INCLUDES='/tmp/impactx-zlibfix.cmake'
-          IMPACTX_CMAKE_ImpactX_openpmd_src='/tmp/impactx-openpmd-src'
         # LTO forced off: Windows Python IPO enables /GL+/LTCG (pybind11) and hits
         # an MSVC ICE in WakeConvolution.cpp. CXXFLAGS carry /arch:AVX2 on AMD64.
         # HDF5 is built static (library_builders.bat) and must be on
@@ -244,13 +245,14 @@ jobs:
           IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON'
           ZLIB_USE_STATIC_LIBS='ON'
           IMPACTX_AMREX_INTERNAL='OFF'
+          IMPACTX_CMAKE_ImpactX_openpmd_internal='OFF'
           IMPACTX_COMPUTE='NOACC'
           IMPACTX_FFT='ON'
           IMPACTX_CMAKE_openPMD_USE_HDF5='ON'
           CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}'
           CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }} /D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR'
           CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF'
-          CMAKE_PREFIX_PATH='C:/Program Files (x86)/AMReX;C:/Program Files (x86)/fftw;C:/Program Files (x86)/HDF5;C:/Program Files (x86)/zlib'
+          CMAKE_PREFIX_PATH='C:/Program Files (x86)/AMReX;C:/Program Files (x86)/fftw;C:/Program Files (x86)/HDF5;C:/Program Files (x86)/zlib;C:/Program Files (x86)/openPMD'
         # pyAMReX links the shared AMReX runtime on Windows -> vendor that DLL,
         # but --exclude the MSVC C++ runtime: a private copy collides
         # with co-loaded C++ extensions in other imports and causes heap corruption.

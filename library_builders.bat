@@ -190,6 +190,51 @@ exit /b 0
   if errorlevel 1 exit 1
 exit /b 0
 
+:: openPMD-api as an external static dep, built once (not per wheel as the old
+:: in-tree subproject), 0.17.1 + our patches (h5dont-atexit #1900 is inert off
+:: Emscripten; h5tequal #1902 is a correctness fix).
+:build_openpmd
+  if exist openpmd-stamp exit /b 0
+
+  git clone --depth 1 --branch 0.17.1 https://github.com/openPMD/openPMD-api.git dep-openpmd
+  if errorlevel 1 exit 1
+  pushd dep-openpmd
+  git apply ..\.github\openpmd-h5dont-atexit-wasm.patch
+  if errorlevel 1 exit 1
+  git apply ..\.github\openpmd-read-h5tequal-tristate.patch
+  if errorlevel 1 exit 1
+  popd
+
+  cmake -S dep-openpmd -B build-openpmd ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DCMAKE_INSTALL_PREFIX=%BUILD_PREFIX%\openPMD ^
+    -DCMAKE_PREFIX_PATH="%BUILD_PREFIX:~1,-1%/HDF5;%BUILD_PREFIX:~1,-1%/zlib" ^
+    -DBUILD_SHARED_LIBS=OFF ^
+    -DopenPMD_USE_MPI=OFF ^
+    -DopenPMD_USE_HDF5=ON ^
+    -DopenPMD_USE_ADIOS2=OFF ^
+    -DopenPMD_USE_PYTHON=OFF ^
+    -DopenPMD_BUILD_TESTING=OFF ^
+    -DopenPMD_BUILD_EXAMPLES=OFF ^
+    -DopenPMD_BUILD_CLI_TOOLS=OFF ^
+    -DHDF5_USE_STATIC_LIBRARIES=ON ^
+    -DZLIB_USE_STATIC_LIBS=ON ^
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+  if errorlevel 1 exit 1
+
+  cmake --build build-openpmd --config Release --parallel %CPU_COUNT%
+  if errorlevel 1 exit 1
+
+  cmake --build build-openpmd --target install --config Release
+  if errorlevel 1 exit 1
+
+  rmdir /s /q build-openpmd
+  if errorlevel 1 exit 1
+
+  break > openpmd-stamp
+  if errorlevel 1 exit 1
+exit /b 0
+
 :main
 call :install_buildessentials
 call :build_fftw
@@ -197,4 +242,5 @@ call :build_zlib
 :: build_bzip2
 :: build_szip
 call :build_hdf5
+call :build_openpmd
 call :build_amrex
