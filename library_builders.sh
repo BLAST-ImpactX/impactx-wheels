@@ -91,13 +91,6 @@ function build_amrex {
     tar xzf amrex-${AMREX_VERSION}.tar.gz
     rm amrex*.tar.gz
 
-    # WASM: the wasm32 ABI has 4-byte pointers but 8-byte double, so AMReX's
-    # parser_number (alignas(parser_node)) underaligns its double.
-    # Fixed in AMReX 26.07+ via https://github.com/AMReX-Codes/amrex/pull/5515
-    if [ -n "${EMCMAKE}" ]; then
-        patch -p1 -d amrex < .github/amrex-parser-alignment.patch
-    fi
-
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
     PATH=${CMAKE_BIN}:${PATH} ${EMCMAKE} cmake \

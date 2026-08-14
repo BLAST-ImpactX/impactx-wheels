@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 env:
   SRC_REF: '26.08'
-  COMMON_PATCHES: '.github/cmakelists-export-pyinit-impactx.patch .github/setup-py-version-post1-impactx.patch'
+  COMMON_PATCHES: ''
 
 jobs:
   build_wheels:
@@ -114,7 +114,6 @@ jobs:
             arch: "wasm32"
             platform: "pyodide"
             build: "cp314-pyodide_wasm32"
-            patches: ".github/setup-py-crosscompile-impactx.patch"
             env:
               SIMD: "OFF"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
@@ -276,9 +275,11 @@ jobs:
         # smoke_example.py -- runs a FODO example and reads its openPMD monitor
         # with the openpmd_api wheel co-loaded in the same process.
         # Pyodide runs in a node sandbox (no pytest CLI) -> check is best-effort.
-        # h5py has no 32-bit wheels and can't build from source in-CI, so co-load
-        # it only on the 64-bit native legs (wasm gets it via PYODIDE below).
-        CIBW_TEST_REQUIRES: "${{ (matrix.arch == 'i686' || matrix.arch == 'x86') && 'pytest numpy openpmd-api' || 'pytest numpy openpmd-api h5py' }}"
+        # Neither h5py nor pandas ships 32-bit wheels (i686/win32) and neither can
+        # build from source in-CI, so the 32-bit legs drop both: pandas is only a
+        # lazy import in impactx, and the h5py co-load is skipped in
+        # smoke_example.py there (wasm gets h5py via PYODIDE below).
+        CIBW_TEST_REQUIRES: "${{ (matrix.arch == 'i686' || matrix.arch == 'x86') && 'pytest numpy openpmd-api' || 'pytest numpy pandas openpmd-api h5py' }}"
         CIBW_TEST_COMMAND: >
           python {project}/.github/check_wheel_libs.py &&
           pytest {project}/tests/python/test_push.py &&
