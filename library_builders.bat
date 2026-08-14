@@ -3,6 +3,13 @@ set CURRENTDIR="%cd%"
 set BUILD_PREFIX="C:\Program Files (x86)"
 set CPU_COUNT="4"
 
+rem std::mutex ABI portability: build every dependency with the same define as
+rem the central wheel build (CIBW_ENVIRONMENT_WINDOWS). VS 2022 17.10 made
+rem std::mutex's constructor constexpr; since we --exclude msvcp*.dll from the
+rem wheel, a mismatch with an older system msvcp140.dll faults in Mtx_destroy.
+rem Setting it here too keeps the whole dependency toolchain consistent.
+set "CXXFLAGS=%CXXFLAGS% /D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR"
+
 echo "CFLAGS: %CFLAGS%"
 echo "CXXFLAGS: %CXXFLAGS%"
 echo "LDFLAGS: %LDFLAGS%"
@@ -19,7 +26,7 @@ exit /b 0
 :build_amrex
   if exist amrex-stamp exit /b 0
 
-  set "AMREX_VERSION=26.06"
+  set "AMREX_VERSION=26.08"
 
   curl -sLo "amrex-%AMREX_VERSION%.zip" ^
     "https://github.com/AMReX-Codes/amrex/archive/refs/tags/%AMREX_VERSION%.zip"
@@ -183,6 +190,51 @@ exit /b 0
   if errorlevel 1 exit 1
 exit /b 0
 
+:: openPMD-api as an external static dep, built once (not per wheel as the old
+:: in-tree subproject), 0.17.1 + our patches (h5dont-atexit #1900 is inert off
+:: Emscripten; h5tequal #1902 is a correctness fix).
+:build_openpmd
+  if exist openpmd-stamp exit /b 0
+
+  git clone --depth 1 --branch 0.17.1 https://github.com/openPMD/openPMD-api.git dep-openpmd
+  if errorlevel 1 exit 1
+  pushd dep-openpmd
+  git apply ..\.github\openpmd-h5dont-atexit-wasm.patch
+  if errorlevel 1 exit 1
+  git apply ..\.github\openpmd-read-h5tequal-tristate.patch
+  if errorlevel 1 exit 1
+  popd
+
+  cmake -S dep-openpmd -B build-openpmd ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DCMAKE_INSTALL_PREFIX=%BUILD_PREFIX%\openPMD ^
+    -DCMAKE_PREFIX_PATH="%BUILD_PREFIX:~1,-1%/HDF5;%BUILD_PREFIX:~1,-1%/zlib" ^
+    -DBUILD_SHARED_LIBS=OFF ^
+    -DopenPMD_USE_MPI=OFF ^
+    -DopenPMD_USE_HDF5=ON ^
+    -DopenPMD_USE_ADIOS2=OFF ^
+    -DopenPMD_USE_PYTHON=OFF ^
+    -DopenPMD_BUILD_TESTING=OFF ^
+    -DopenPMD_BUILD_EXAMPLES=OFF ^
+    -DopenPMD_BUILD_CLI_TOOLS=OFF ^
+    -DHDF5_USE_STATIC_LIBRARIES=ON ^
+    -DZLIB_USE_STATIC_LIBS=ON ^
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+  if errorlevel 1 exit 1
+
+  cmake --build build-openpmd --config Release --parallel %CPU_COUNT%
+  if errorlevel 1 exit 1
+
+  cmake --build build-openpmd --target install --config Release
+  if errorlevel 1 exit 1
+
+  rmdir /s /q build-openpmd
+  if errorlevel 1 exit 1
+
+  break > openpmd-stamp
+  if errorlevel 1 exit 1
+exit /b 0
+
 :main
 call :install_buildessentials
 call :build_fftw
@@ -190,4 +242,5 @@ call :build_zlib
 :: build_bzip2
 :: build_szip
 call :build_hdf5
+call :build_openpmd
 call :build_amrex
