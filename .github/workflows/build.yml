@@ -200,10 +200,24 @@ jobs:
         CMAKE_GENERATOR_PLATFORM: "${{ matrix.env.CMAKE_GENERATOR_PLATFORM }}"
         # Show a bit more output (pip -v)
         CIBW_BUILD_VERBOSITY: 1
-        # Testing of the final wheel
-        # pandas ships no 32-bit wheels (win32/i686) and impactx only imports it lazily
-        CIBW_TEST_REQUIRES: "${{ (matrix.arch == 'x86' || matrix.arch == 'i686') && 'pytest numpy' || 'pytest numpy pandas' }}"
-        CIBW_TEST_COMMAND: pytest {project}/tests/python/test_push.py
+        # Testing of the final wheel: shared-lib deps (check_wheel_libs.py), the
+        # push unit test, and smoke_example.py -- runs a FODO example and reads its
+        # openPMD beam monitor back with the openpmd_api wheel co-loaded in the same
+        # process (the co-load that crashed on macOS before impactx#1538).
+        # Neither pandas nor h5py ships 32-bit wheels (win32/i686) and neither builds
+        # from source in-CI: pandas is only a lazy import in impactx, and the h5py
+        # co-load is skipped at its call site in smoke_example.py.
+        CIBW_TEST_REQUIRES: "${{ (matrix.arch == 'x86' || matrix.arch == 'i686') && 'pytest numpy openpmd-api' || 'pytest numpy pandas openpmd-api h5py' }}"
+        CIBW_TEST_COMMAND: >
+          python {project}/.github/check_wheel_libs.py &&
+          pytest {project}/tests/python/test_push.py &&
+          python {project}/.github/smoke_example.py &&
+          python {project}/.github/smoke_example.py --with-h5py
+        # Windows has no HDF5 on CMAKE_PREFIX_PATH here, so openPMD is built without
+        # its HDF5 backend and the beam-monitor read-back cannot run: deps + unit test only.
+        CIBW_TEST_COMMAND_WINDOWS: >
+          python {project}/.github/check_wheel_libs.py &&
+          pytest {project}/tests/python/test_push.py
       run: |
         cd src
         python -m pip install --upgrade pip build setuptools[core] wheel
