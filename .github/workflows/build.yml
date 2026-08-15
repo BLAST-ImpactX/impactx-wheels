@@ -184,7 +184,7 @@ jobs:
         # HDF5_USE_STATIC_LIBRARIES needs the IMPACTX_CMAKE_ prefix to reach CMake as a
         # real -D (setup.py only forwards that prefix); plain env vars are ignored by
         # find_package(HDF5). We build HDF5 static everywhere, so ON is the correct value.
-        CIBW_ENVIRONMENT: IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' IMPACTX_SIMD='${{ matrix.env.SIMD }}' AMREX_SIMD='${{ matrix.env.SIMD }}' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' ZLIB_USE_STATIC_LIBS='ON' PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
+        CIBW_ENVIRONMENT: IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_CMAKE_ImpactX_openpmd_internal='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' IMPACTX_SIMD='${{ matrix.env.SIMD }}' AMREX_SIMD='${{ matrix.env.SIMD }}' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' ZLIB_USE_STATIC_LIBS='ON' PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
         # ImpactX defaults Python IPO/LTO to ON unless CMAKE_INTERPROCEDURAL_OPTIMIZATION
         # is set explicitly. On Windows that ends up enabling /GL and /LTCG via pybind11,
         # which currently trips an MSVC ICE in src/python/WakeConvolution.cpp.
@@ -193,7 +193,7 @@ jobs:
         # _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR reverts VS 2022 17.10's constexpr
         # std::mutex ctor, which NULL-derefs in an older SYSTEM msvcp140.dll (we
         # --exclude the vendored copy) -- the 0xC0000005 at amrex_3d_pybind import.
-        CIBW_ENVIRONMENT_WINDOWS: IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }} /D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR' ZLIB_USE_STATIC_LIBS='ON' CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF' CMAKE_PREFIX_PATH='C:\Program Files (x86)\AMReX;C:\Program Files (x86)\fftw;C:\Program Files (x86)\zlib'
+        CIBW_ENVIRONMENT_WINDOWS: IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_CMAKE_ImpactX_openpmd_internal='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }} /D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR' ZLIB_USE_STATIC_LIBS='ON' CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF' CMAKE_PREFIX_PATH='C:/Program Files (x86)/AMReX;C:/Program Files (x86)/fftw;C:/Program Files (x86)/HDF5;C:/Program Files (x86)/zlib;C:/Program Files (x86)/openPMD'
         # pyAMReX links the shared AMReX runtime on Windows -> vendor that DLL,
         # but --exclude the MSVC C++ runtime: a private copy collides
         # with co-loaded C++ extensions in other imports and causes heap corruption.
@@ -226,11 +226,6 @@ jobs:
           pytest {project}/tests/python/test_push.py &&
           python {project}/.github/smoke_example.py &&
           python {project}/.github/smoke_example.py --with-h5py
-        # Windows has no HDF5 on CMAKE_PREFIX_PATH here, so openPMD is built without
-        # its HDF5 backend and the beam-monitor read-back cannot run: deps + unit test only.
-        CIBW_TEST_COMMAND_WINDOWS: >
-          python {project}/.github/check_wheel_libs.py &&
-          pytest {project}/tests/python/test_push.py
       run: |
         cd src
         python -m pip install --upgrade pip build setuptools[core] wheel

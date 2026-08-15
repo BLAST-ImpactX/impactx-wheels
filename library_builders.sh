@@ -301,6 +301,48 @@ function build_virsimd {
     touch virsimd-stamp
 }
 
+# openPMD-api as an external, static dependency, built once per platform (not
+# once per wheel like the in-tree subproject) so the full CPython matrix does not
+# rebuild it five times. Pinned to 0.17.1 with two source fixes not yet in that
+# tag: openPMD-api#1900 (H5dont_atexit at load; Emscripten-guarded, so inert
+# here) and #1902 (guard the tri-state H5Tequal with `> 0` in the HDF5 read
+# type-detection; platform-agnostic correctness fix).
+function build_openpmd {
+    if [ -e openpmd-stamp ]; then return; fi
+
+    OPENPMD_SRC="dep-openpmd"
+    if [ ! -d "${OPENPMD_SRC}" ]; then
+        git clone --depth 1 --branch 0.17.1 \
+            https://github.com/openPMD/openPMD-api.git "${OPENPMD_SRC}"
+        patch -p1 -d "${OPENPMD_SRC}" < .github/openpmd-h5dont-atexit-wasm.patch
+        patch -p1 -d "${OPENPMD_SRC}" < .github/openpmd-read-h5tequal-tristate.patch
+    fi
+
+    PY_BIN=$(which python3)
+    CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
+    PATH=${CMAKE_BIN}:${PATH} cmake -S ${OPENPMD_SRC} -B build-openpmd \
+        -DCMAKE_BUILD_TYPE=Release             \
+        -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
+        -DCMAKE_PREFIX_PATH=${BUILD_PREFIX}    \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON   \
+        -DBUILD_SHARED_LIBS=OFF                \
+        -DopenPMD_USE_MPI=OFF                  \
+        -DopenPMD_USE_HDF5=ON                  \
+        -DopenPMD_USE_ADIOS2=OFF               \
+        -DopenPMD_USE_PYTHON=OFF               \
+        -DopenPMD_BUILD_TESTING=OFF            \
+        -DopenPMD_BUILD_EXAMPLES=OFF           \
+        -DopenPMD_BUILD_CLI_TOOLS=OFF          \
+        -DHDF5_USE_STATIC_LIBRARIES=ON         \
+        -DZLIB_USE_STATIC_LIBS=ON
+    PATH=${CMAKE_BIN}:${PATH} cmake --build build-openpmd --parallel ${CPU_COUNT}
+    PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-openpmd --target install
+
+    rm -rf build-openpmd
+
+    touch openpmd-stamp
+}
+
 # static libs need relocatable symbols for linking to shared python lib
 export CFLAGS+=" -fPIC"
 export CXXFLAGS+=" -fPIC"
@@ -319,6 +361,7 @@ install_buildessentials
 build_fftw
 build_zlib
 build_hdf5
+build_openpmd
 if [ "${AMREX_SIMD:-OFF}" = "ON" ]; then
     build_virsimd
 fi
