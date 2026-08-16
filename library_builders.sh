@@ -5,6 +5,10 @@ set -eu -o pipefail
 
 BUILD_PREFIX="${BUILD_PREFIX:-/usr/local}"
 
+# Common curl options: retry transient network/mirror failures and fail hard on
+# an HTTP error instead of saving the error page as the tarball (used everywhere).
+CURL_RETRY="--retry 5 --retry-delay 3"
+
 # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#supported-runners-and-hardware-resources
 if [ "$(uname -s)" = "Darwin" ]
 then
@@ -46,7 +50,7 @@ function install_buildessentials {
         if [ $CMAKE_FOUND -ne 0 ]
         then
           yum -y install openssl-devel
-          curl -sLo cmake-3.17.1.tar.gz \
+          curl ${CURL_RETRY} -fsSL -o cmake-3.17.1.tar.gz \
               https://github.com/Kitware/CMake/releases/download/v3.17.1/cmake-3.17.1.tar.gz
           tar -xzf cmake-*.gz
           cd cmake-*
@@ -77,9 +81,10 @@ function install_buildessentials {
 function build_amrex {
     if [ -e amrex-stamp ]; then return; fi
 
-    AMREX_VERSION="26.06"
+    AMREX_VERSION="26.08"
 
-    curl -sLO https://github.com/AMReX-Codes/amrex/releases/download/${AMREX_VERSION}/amrex-${AMREX_VERSION}.tar.gz
+    curl ${CURL_RETRY} -fsSL -o amrex-${AMREX_VERSION}.tar.gz \
+        https://github.com/AMReX-Codes/amrex/releases/download/${AMREX_VERSION}/amrex-${AMREX_VERSION}.tar.gz
     file amrex*.tar.gz
     tar xzf amrex-${AMREX_VERSION}.tar.gz
     rm amrex*.tar.gz
@@ -124,7 +129,8 @@ function build_fftw {
 
     FFTW_VERSION="3.3.10"
 
-    curl -sLO https://www.fftw.org/fftw-$FFTW_VERSION.tar.gz
+    curl ${CURL_RETRY} -fsSL -o fftw-$FFTW_VERSION.tar.gz \
+        https://www.fftw.org/fftw-$FFTW_VERSION.tar.gz
     file fftw*.tar.gz
     tar xzf fftw-$FFTW_VERSION.tar.gz
     rm fftw*.tar.gz
@@ -172,7 +178,7 @@ function build_fftw {
 function build_hdf5 {
     if [ -e hdf5-stamp ]; then return; fi
 
-    curl -sLo hdf5-1.12.2.tar.gz \
+    curl ${CURL_RETRY} -fsSL -o hdf5-1.12.2.tar.gz \
         https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.12/hdf5-1.12.2/src/hdf5-1.12.2.tar.gz
     file hdf5*.tar.gz
     tar -xzf hdf5*.tar.gz
@@ -197,11 +203,11 @@ function build_hdf5 {
 
         HOST_ARG="--host=aarch64-apple-darwin"
 
-        curl -sLo osx_cross_configure.patch \
+        curl ${CURL_RETRY} -fsSL -o osx_cross_configure.patch \
             https://raw.githubusercontent.com/h5py/h5py/fcaca1d1b81d25c0d83b11d5bdf497469b5980e9/ci/osx_cross_configure.patch
         python3 -m patch -p 0 -d . osx_cross_configure.patch
 
-        curl -sLo osx_cross_src_makefile.patch \
+        curl ${CURL_RETRY} -fsSL -o osx_cross_src_makefile.patch \
             https://raw.githubusercontent.com/h5py/h5py/fcaca1d1b81d25c0d83b11d5bdf497469b5980e9/ci/osx_cross_src_makefile.patch
         #python3 -m patch -p 0 -d . osx_cross_src_makefile.patch
         patch -p 0 < osx_cross_src_makefile.patch
@@ -244,7 +250,8 @@ function build_zlib {
 
     ZLIB_VERSION="1.3.1"
 
-    curl -sLO https://github.com/madler/zlib/archive/refs/tags/v${ZLIB_VERSION}.tar.gz
+    curl ${CURL_RETRY} -fsSL -o v${ZLIB_VERSION}.tar.gz \
+        https://github.com/madler/zlib/archive/refs/tags/v${ZLIB_VERSION}.tar.gz
     file v${ZLIB_VERSION}.tar.gz
     tar xzf v${ZLIB_VERSION}.tar.gz
     rm v${ZLIB_VERSION}.tar.gz
@@ -261,7 +268,7 @@ function build_zlib {
 
     PATH=${CMAKE_BIN}:${PATH} cmake --build build-zlib --parallel ${CPU_COUNT}
     PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-zlib --target install
-    ${SUDO} rm -rf ${BUILD_PREFIX}/lib/libz.*dylib ${BUILD_PREFIX}/lib/libz.*so
+    ${SUDO} rm -rf ${BUILD_PREFIX}/lib/libz.*dylib ${BUILD_PREFIX}/lib/libz.*so*
 
     rm -rf build-zlib
 
@@ -273,7 +280,8 @@ function build_virsimd {
 
     VIRSIMD_VERSION="0.4.4"
 
-    curl -sLO https://github.com/mattkretz/vir-simd/archive/refs/tags/v${VIRSIMD_VERSION}.tar.gz
+    curl ${CURL_RETRY} -fsSL -o v${VIRSIMD_VERSION}.tar.gz \
+        https://github.com/mattkretz/vir-simd/archive/refs/tags/v${VIRSIMD_VERSION}.tar.gz
     file v${VIRSIMD_VERSION}.tar.gz
     tar xzf v${VIRSIMD_VERSION}.tar.gz
     rm v${VIRSIMD_VERSION}.tar.gz
@@ -291,6 +299,48 @@ function build_virsimd {
     rm -rf build-virsimd
 
     touch virsimd-stamp
+}
+
+# openPMD-api as an external, static dependency, built once per platform (not
+# once per wheel like the in-tree subproject) so the full CPython matrix does not
+# rebuild it five times. Pinned to 0.17.1 with two source fixes not yet in that
+# tag: openPMD-api#1900 (H5dont_atexit at load; Emscripten-guarded, so inert
+# here) and #1902 (guard the tri-state H5Tequal with `> 0` in the HDF5 read
+# type-detection; platform-agnostic correctness fix).
+function build_openpmd {
+    if [ -e openpmd-stamp ]; then return; fi
+
+    OPENPMD_SRC="dep-openpmd"
+    if [ ! -d "${OPENPMD_SRC}" ]; then
+        git clone --depth 1 --branch 0.17.1 \
+            https://github.com/openPMD/openPMD-api.git "${OPENPMD_SRC}"
+        patch -p1 -d "${OPENPMD_SRC}" < .github/openpmd-h5dont-atexit-wasm.patch
+        patch -p1 -d "${OPENPMD_SRC}" < .github/openpmd-read-h5tequal-tristate.patch
+    fi
+
+    PY_BIN=$(which python3)
+    CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
+    PATH=${CMAKE_BIN}:${PATH} cmake -S ${OPENPMD_SRC} -B build-openpmd \
+        -DCMAKE_BUILD_TYPE=Release             \
+        -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
+        -DCMAKE_PREFIX_PATH=${BUILD_PREFIX}    \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON   \
+        -DBUILD_SHARED_LIBS=OFF                \
+        -DopenPMD_USE_MPI=OFF                  \
+        -DopenPMD_USE_HDF5=ON                  \
+        -DopenPMD_USE_ADIOS2=OFF               \
+        -DopenPMD_USE_PYTHON=OFF               \
+        -DopenPMD_BUILD_TESTING=OFF            \
+        -DopenPMD_BUILD_EXAMPLES=OFF           \
+        -DopenPMD_BUILD_CLI_TOOLS=OFF          \
+        -DHDF5_USE_STATIC_LIBRARIES=ON         \
+        -DZLIB_USE_STATIC_LIBS=ON
+    PATH=${CMAKE_BIN}:${PATH} cmake --build build-openpmd --parallel ${CPU_COUNT}
+    PATH=${CMAKE_BIN}:${PATH} ${SUDO} cmake --build build-openpmd --target install
+
+    rm -rf build-openpmd
+
+    touch openpmd-stamp
 }
 
 # static libs need relocatable symbols for linking to shared python lib
@@ -311,6 +361,7 @@ install_buildessentials
 build_fftw
 build_zlib
 build_hdf5
+build_openpmd
 if [ "${AMREX_SIMD:-OFF}" = "ON" ]; then
     build_virsimd
 fi

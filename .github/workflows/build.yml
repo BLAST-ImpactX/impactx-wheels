@@ -2,6 +2,9 @@ name: wheels
 
 on: [push, pull_request]
 
+env:
+  COMMON_PATCHES: '.github/setup-py-freethreaded-abi-impactx.patch .github/setup-py-openpmd-env-impactx.patch'
+
 jobs:
   build_wheels:
     name: ${{ matrix.name }} (${{ matrix.arch }})
@@ -108,7 +111,7 @@ jobs:
       with:
         repository: 'BLAST-ImpactX/impactx'
         path: 'src'
-        ref: '26.06'
+        ref: '26.08'
 
     - uses: actions/checkout@v4
       with:
@@ -128,6 +131,16 @@ jobs:
       run: |
         python -m pip install --upgrade pip build setuptools[core] wheel
         python -m pip install cibuildwheel==3.2.1
+
+    # Source patches not (yet) in the built release tag.
+    # Applies all matrix.patches (if any), then the $COMMON_PATCHES (if any).
+    - name: Apply patches
+      shell: bash
+      run: |
+        cd src
+        for p in ${{ matrix.patches }} $COMMON_PATCHES; do
+          git apply --ignore-whitespace "$p"
+        done
 
 #    # Patch: Fix versioning
 #    - name: Download Patch 1/2
@@ -166,20 +179,29 @@ jobs:
         CIBW_BEFORE_BUILD_LINUX: bash -x .github/library_builders.sh
         CIBW_BEFORE_BUILD_MACOS: bash -x .github/library_builders.sh
         CIBW_BEFORE_BUILD_WINDOWS: 'cmd /E:ON /V:ON /C .github\library_builders.bat'
-        # for the openPMD-api build, CMake shall search for
-        # static dependencies of HDF5 (see setup.py)
         # SIMD ('${{ matrix.env.SIMD }}') and the x86_64 march/mtune flags are set per matrix arch;
         # AMREX_SIMD drives the external AMReX build in library_builders.sh, IMPACTX_SIMD the wheel.
-        CIBW_ENVIRONMENT: HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' IMPACTX_SIMD='${{ matrix.env.SIMD }}' AMREX_SIMD='${{ matrix.env.SIMD }}' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' ZLIB_USE_STATIC_LIBS='ON' PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
+        # HDF5_USE_STATIC_LIBRARIES needs the IMPACTX_CMAKE_ prefix to reach CMake as a
+        # real -D (setup.py only forwards that prefix); plain env vars are ignored by
+        # find_package(HDF5). We build HDF5 static everywhere, so ON is the correct value.
+        CIBW_ENVIRONMENT: IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_OPENPMD_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' IMPACTX_SIMD='${{ matrix.env.SIMD }}' AMREX_SIMD='${{ matrix.env.SIMD }}' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' ZLIB_USE_STATIC_LIBS='ON' PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
         # ImpactX defaults Python IPO/LTO to ON unless CMAKE_INTERPROCEDURAL_OPTIMIZATION
         # is set explicitly. On Windows that ends up enabling /GL and /LTCG via pybind11,
         # which currently trips an MSVC ICE in src/python/WakeConvolution.cpp.
         # CFLAGS/CXXFLAGS carry /arch:AVX2 on AMD64 only (empty on Win32); CMake seeds these
         # into both the AMReX pre-build and the ImpactX wheel. No explicit vir-simd SIMD on MSVC.
-        CIBW_ENVIRONMENT_WINDOWS: HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' ZLIB_USE_STATIC_LIBS='ON' CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF' CMAKE_PREFIX_PATH='C:\Program Files (x86)\AMReX;C:\Program Files (x86)\fftw;C:\Program Files (x86)\zlib'
-        # cibuildwheel does not repair Windows wheels by default. Since pyAMReX links
-        # against the shared AMReX runtime on Windows, vendor that DLL into the wheel.
-        CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: 'delvewheel repair --add-path "C:\Program Files (x86)\AMReX\bin" -v -w {dest_dir} {wheel}'
+        # _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR reverts VS 2022 17.10's constexpr
+        # std::mutex ctor, which NULL-derefs in an older SYSTEM msvcp140.dll (we
+        # --exclude the vendored copy) -- the 0xC0000005 at amrex_3d_pybind import.
+        CIBW_ENVIRONMENT_WINDOWS: IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_OPENPMD_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }} /D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR' ZLIB_USE_STATIC_LIBS='ON' CMAKE_INTERPROCEDURAL_OPTIMIZATION='OFF' CMAKE_PREFIX_PATH='C:/Program Files (x86)/AMReX;C:/Program Files (x86)/fftw;C:/Program Files (x86)/HDF5;C:/Program Files (x86)/zlib;C:/Program Files (x86)/openPMD'
+        # pyAMReX links the shared AMReX runtime on Windows -> vendor that DLL,
+        # but --exclude the MSVC C++ runtime: a private copy collides
+        # with co-loaded C++ extensions in other imports and causes heap corruption.
+        # --exclude takes glob wildcards (delvewheel docs); unversioned families
+        # stay correct across runtime updates / a future toolset (msvcp150, ...).
+        CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >
+          delvewheel repair --add-path "C:\Program Files (x86)\AMReX\bin" -v -w {dest_dir} {wheel}
+          --exclude "msvcp*.dll;vcruntime*.dll;concrt*.dll;vccorlib*.dll;vcomp*.dll;vcamp*.dll;msvcr*.dll"
         CMAKE_BUILD_PARALLEL_LEVEL: "${{ matrix.env.CMAKE_BUILD_PARALLEL_LEVEL }}"
         # C++17 support in macOS 10.13+ (partial) and 10.14+ (std::visit) and 10.15+ (std::filesystem::path)
         #   https://cibuildwheel.readthedocs.io/en/stable/cpp_standards/#macos-and-deployment-target-versions
@@ -191,9 +213,19 @@ jobs:
         CMAKE_GENERATOR_PLATFORM: "${{ matrix.env.CMAKE_GENERATOR_PLATFORM }}"
         # Show a bit more output (pip -v)
         CIBW_BUILD_VERBOSITY: 1
-        # Testing of the final wheel
-        CIBW_TEST_REQUIRES: pytest numpy pandas
-        CIBW_TEST_COMMAND: pytest {project}/tests/python/test_push.py
+        # Testing of the final wheel: shared-lib deps (check_wheel_libs.py), the
+        # push unit test, and smoke_example.py -- runs a FODO example and reads its
+        # openPMD beam monitor back with the openpmd_api wheel co-loaded in the same
+        # process (the co-load that crashed on macOS before impactx#1538).
+        # Neither pandas nor h5py ships 32-bit wheels (win32/i686) and neither builds
+        # from source in-CI: pandas is only a lazy import in impactx, and the h5py
+        # co-load is skipped at its call site in smoke_example.py.
+        CIBW_TEST_REQUIRES: "${{ (matrix.arch == 'x86' || matrix.arch == 'i686') && 'pytest numpy openpmd-api' || 'pytest numpy pandas openpmd-api h5py' }}"
+        CIBW_TEST_COMMAND: >
+          python {project}/.github/check_wheel_libs.py &&
+          pytest {project}/tests/python/test_push.py &&
+          python {project}/.github/smoke_example.py &&
+          python {project}/.github/smoke_example.py --with-h5py
       run: |
         cd src
         python -m pip install --upgrade pip build setuptools[core] wheel
@@ -209,6 +241,14 @@ jobs:
         name: wheels-${{ matrix.os }}-${{ matrix.arch }}
         path: ./wheelhouse
         overwrite: true
+
+    - name: Check wheels do not vendor the VC++ runtime
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        for whl in wheelhouse/*.whl; do
+          python src/.github/check_no_vendored_runtime.py "$whl"
+        done
 
     - name: Publish on pypi.org
       if: github.event_name == 'push' && github.repository == 'BLAST-ImpactX/impactx-wheels' && github.ref == 'refs/heads/wheels-noacc'
