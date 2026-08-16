@@ -1,0 +1,52 @@
+Ship BLAST-ImpactX/impactx#1613 ahead of the next ImpactX release.
+
+Windows upper-cases environment variable names and CMake variables are
+case-sensitive, so the generic escape hatch
+IMPACTX_CMAKE_ImpactX_openpmd_internal=OFF arrives as
+-DIMPACTX_OPENPMD_INTERNAL=OFF and nothing reads it: the Windows wheels keep
+ImpactX_openpmd_internal=ON and rebuild openPMD-api in-tree once per CPython,
+on top of the external one library_builders.bat already built.
+
+This adds the missing all-caps IMPACTX_OPENPMD_{INTERNAL,SRC,REPO,BRANCH}
+variables (mirroring the AMReX/pyAMReX block, same ON default), which survive
+Windows' upper-casing. Docs hunk dropped -- the wheel build does not need it.
+
+Drop this once SRC_REF advances past a release containing impactx#1613.
+
+diff --git a/setup.py b/setup.py
+index a8fbd44c1..1ee16f60a 100644
+--- a/setup.py
++++ b/setup.py
+@@ -119,6 +119,7 @@ class CMakeBuild(build_ext):
+             ## dependency control (developers & package managers)
+             "-DImpactX_amrex_internal=" + ImpactX_amrex_internal,
+             "-DImpactX_pyamrex_internal=" + ImpactX_pyamrex_internal,
++            "-DImpactX_openpmd_internal=" + ImpactX_openpmd_internal,
+             # PEP-440 conformant version from package
+             "-DpyImpactX_VERSION_INFO=" + self.distribution.get_version(),
+             #        see PICSAR and openPMD below
+@@ -143,6 +144,12 @@ class CMakeBuild(build_ext):
+             cmake_args.append("-DImpactX_amrex_branch=" + ImpactX_amrex_branch)
+         if ImpactX_pyamrex_branch:
+             cmake_args.append("-DImpactX_pyamrex_branch=" + ImpactX_pyamrex_branch)
++        if ImpactX_openpmd_src:
++            cmake_args.append("-DImpactX_openpmd_src=" + ImpactX_openpmd_src)
++        if ImpactX_openpmd_repo:
++            cmake_args.append("-DImpactX_openpmd_repo=" + ImpactX_openpmd_repo)
++        if ImpactX_openpmd_branch:
++            cmake_args.append("-DImpactX_openpmd_branch=" + ImpactX_openpmd_branch)
+ 
+         if CMAKE_INTERPROCEDURAL_OPTIMIZATION is not None:
+             cmake_args.append(
+@@ -223,6 +230,11 @@ ImpactX_pyamrex_internal = os.environ.get("IMPACTX_PYAMREX_INTERNAL", "ON")
+ ImpactX_pyamrex_repo = os.environ.get("IMPACTX_PYAMREX_REPO")
+ ImpactX_pyamrex_branch = os.environ.get("IMPACTX_PYAMREX_BRANCH")
+ 
++ImpactX_openpmd_src = os.environ.get("IMPACTX_OPENPMD_SRC")
++ImpactX_openpmd_internal = os.environ.get("IMPACTX_OPENPMD_INTERNAL", "ON")
++ImpactX_openpmd_repo = os.environ.get("IMPACTX_OPENPMD_REPO")
++ImpactX_openpmd_branch = os.environ.get("IMPACTX_OPENPMD_BRANCH")
++
+ # extra CMake arguments
+ extra_cmake_args = []
+ for k, v in os.environ.items():
