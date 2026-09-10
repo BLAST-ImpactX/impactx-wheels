@@ -89,6 +89,10 @@ function build_amrex {
     tar xzf amrex-${AMREX_VERSION}.tar.gz
     rm amrex*.tar.gz
 
+    # 32-bit x86: x87 excess precision trips a static_assert in AMReX_Random.H
+    # (no codegen change, so a no-op elsewhere). AMReX-Codes/amrex#5902
+    patch -p1 -d amrex < .github/amrex-random-x87-assert.patch
+
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
     PATH=${CMAKE_BIN}:${PATH} cmake    \
