@@ -3,7 +3,7 @@ name: wheels
 on: [push, pull_request]
 
 env:
-  COMMON_PATCHES: '.github/setup-py-freethreaded-abi-impactx.patch .github/setup-py-openpmd-env-impactx.patch'
+  COMMON_PATCHES: '.github/setup-py-openpmd-env-impactx.patch'
 
 jobs:
   build_wheels:
