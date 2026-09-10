@@ -26,7 +26,7 @@ exit /b 0
 :build_amrex
   if exist amrex-stamp exit /b 0
 
-  set "AMREX_VERSION=26.08"
+  set "AMREX_VERSION=26.09"
 
   curl -sLo "amrex-%AMREX_VERSION%.zip" ^
     "https://github.com/AMReX-Codes/amrex/archive/refs/tags/%AMREX_VERSION%.zip"

@@ -81,13 +81,17 @@ function install_buildessentials {
 function build_amrex {
     if [ -e amrex-stamp ]; then return; fi
 
-    AMREX_VERSION="26.08"
+    AMREX_VERSION="26.09"
 
     curl ${CURL_RETRY} -fsSL -o amrex-${AMREX_VERSION}.tar.gz \
         https://github.com/AMReX-Codes/amrex/releases/download/${AMREX_VERSION}/amrex-${AMREX_VERSION}.tar.gz
     file amrex*.tar.gz
     tar xzf amrex-${AMREX_VERSION}.tar.gz
     rm amrex*.tar.gz
+
+    # 32-bit x86: x87 excess precision trips a static_assert in AMReX_Random.H
+    # (no codegen change, so a no-op elsewhere). AMReX-Codes/amrex#5902
+    patch -p1 -d amrex < .github/amrex-random-x87-assert.patch
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
@@ -135,17 +139,21 @@ function build_fftw {
     tar xzf fftw-$FFTW_VERSION.tar.gz
     rm fftw*.tar.gz
 
+    # Install into lib/ like AMReX, not GNUInstallDirs' lib64: auditwheel only
+    # searches lib/, so a lib64 FFTW cannot be relocated into the wheel.
+
     # DOUBLE
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
     PATH=${CMAKE_BIN}:${PATH} cmake \
       -S fftw-*                  \
       -B build-fftw              \
-      -DBUILD_SHARED_LIBS=OFF    \
+      -DBUILD_SHARED_LIBS=ON     \
       -DBUILD_TESTS=OFF          \
       -DDISABLE_FORTRAN=ON       \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
+      -DCMAKE_INSTALL_LIBDIR=lib \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
     PATH=${CMAKE_BIN}:${PATH} cmake --build build-fftw --parallel ${CPU_COUNT}
@@ -159,12 +167,13 @@ function build_fftw {
     PATH=${CMAKE_BIN}:${PATH} cmake \
       -S fftw-*                  \
       -B build-fftw              \
-      -DBUILD_SHARED_LIBS=OFF    \
+      -DBUILD_SHARED_LIBS=ON     \
       -DBUILD_TESTS=OFF          \
       -DDISABLE_FORTRAN=ON       \
       -DENABLE_FLOAT=ON          \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
+      -DCMAKE_INSTALL_LIBDIR=lib \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
     PATH=${CMAKE_BIN}:${PATH} cmake --build build-fftw --parallel ${CPU_COUNT}

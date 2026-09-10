@@ -3,7 +3,7 @@ name: wheels
 on: [push, pull_request]
 
 env:
-  COMMON_PATCHES: '.github/setup-py-freethreaded-abi-impactx.patch .github/setup-py-openpmd-env-impactx.patch'
+  COMMON_PATCHES: '.github/setup-py-openpmd-env-impactx.patch'
 
 jobs:
   build_wheels:
@@ -111,7 +111,7 @@ jobs:
       with:
         repository: 'BLAST-ImpactX/impactx'
         path: 'src'
-        ref: '26.08'
+        ref: '26.09'
 
     - uses: actions/checkout@v4
       with:
@@ -184,7 +184,7 @@ jobs:
         # HDF5_USE_STATIC_LIBRARIES needs the IMPACTX_CMAKE_ prefix to reach CMake as a
         # real -D (setup.py only forwards that prefix); plain env vars are ignored by
         # find_package(HDF5). We build HDF5 static everywhere, so ON is the correct value.
-        CIBW_ENVIRONMENT: IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_OPENPMD_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' IMPACTX_SIMD='${{ matrix.env.SIMD }}' AMREX_SIMD='${{ matrix.env.SIMD }}' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' ZLIB_USE_STATIC_LIBS='ON' PKG_CONFIG_PATH='/usr/local/lib64/pkgconfig;/usr/local/lib/pkgconfig'
+        CIBW_ENVIRONMENT: IMPACTX_CMAKE_HDF5_USE_STATIC_LIBRARIES='ON' IMPACTX_AMREX_INTERNAL='OFF' IMPACTX_OPENPMD_INTERNAL='OFF' IMPACTX_COMPUTE='NOACC' IMPACTX_FFT='ON' IMPACTX_SIMD='${{ matrix.env.SIMD }}' AMREX_SIMD='${{ matrix.env.SIMD }}' CFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' CXXFLAGS='${{ matrix.env.WHEEL_ARCHFLAGS }}' ZLIB_USE_STATIC_LIBS='ON' PKG_CONFIG_PATH='/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig'
         # ImpactX defaults Python IPO/LTO to ON unless CMAKE_INTERPROCEDURAL_OPTIMIZATION
         # is set explicitly. On Windows that ends up enabling /GL and /LTCG via pybind11,
         # which currently trips an MSVC ICE in src/python/WakeConvolution.cpp.

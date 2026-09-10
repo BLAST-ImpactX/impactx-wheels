@@ -1,0 +1,32 @@
+Fix the AMReX_Random.H static_assert on 32-bit x86 (AMReX-Codes/amrex#5902).
+
+On a target with FLT_EVAL_METHOD == 2 -- 32-bit x86 using x87, where
+subexpressions are evaluated as long double -- `1 - eps/4` stays representable
+and does not round to one, so the assertion fires and nothing that includes
+AMReX_Random.H compiles:
+
+  AMReX_Random.H:49:81: error: static assertion failed
+  note: the comparison reduces to '(9.99999999999999944489e-1l == 1.0e+0l)'
+
+Materializing the midpoint as a constexpr Real first discards the excess
+precision. Assertion only; no generated code changes, so this is a no-op on
+every other platform.
+
+Drop this once AMREX_VERSION advances past a release containing amrex#5902.
+
+diff --git a/Src/Base/AMReX_Random.H b/Src/Base/AMReX_Random.H
+index a4ea842474..4d5bcdca94 100644
+--- a/Src/Base/AMReX_Random.H
++++ b/Src/Base/AMReX_Random.H
+@@ -45,8 +45,10 @@ namespace amrex
+         // against std::nextafter itself on the host.
+         constexpr Real almost_one
+             = Real(1) - Real(0.5)*std::numeric_limits<Real>::epsilon();
++        constexpr Real midpoint
++            = Real(1) - Real(0.25)*std::numeric_limits<Real>::epsilon();
+         static_assert(almost_one < Real(1));
+-        static_assert(Real(1) - Real(0.25)*std::numeric_limits<Real>::epsilon() == Real(1));
++        static_assert(midpoint == Real(1));
+         // No generator produces NaN, but note this maps it to almost_one
+         // rather than propagating it, since the comparison is false for NaN.
+         return (v < almost_one) ? v : almost_one;
