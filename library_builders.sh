@@ -139,6 +139,9 @@ function build_fftw {
     tar xzf fftw-$FFTW_VERSION.tar.gz
     rm fftw*.tar.gz
 
+    # Install into lib/ like AMReX, not GNUInstallDirs' lib64: auditwheel only
+    # searches lib/, so a lib64 FFTW cannot be relocated into the wheel.
+
     # DOUBLE
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
@@ -150,6 +153,7 @@ function build_fftw {
       -DDISABLE_FORTRAN=ON       \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
+      -DCMAKE_INSTALL_LIBDIR=lib \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
     PATH=${CMAKE_BIN}:${PATH} cmake --build build-fftw --parallel ${CPU_COUNT}
@@ -169,6 +173,7 @@ function build_fftw {
       -DENABLE_FLOAT=ON          \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX} \
+      -DCMAKE_INSTALL_LIBDIR=lib \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
     PATH=${CMAKE_BIN}:${PATH} cmake --build build-fftw --parallel ${CPU_COUNT}
