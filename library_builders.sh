@@ -124,6 +124,42 @@ function build_amrex {
     touch amrex-stamp
 }
 
+# FFTW must be SHARED, not static.
+#
+# AMReX's FFT layer is header-templated: AMReX_FFT_Helper.H calls fftw_plan_*,
+# fftw_execute and fftw_destroy_plan directly inside templates, so every
+# consumer that instantiates amrex::FFT::R2C<...> -- i.e. impactx_pybind.so for
+# CSR -- compiles its own FFTW call sites. AMReX_FFT.cpp, compiled into
+# libamrex, owns FFTW's global state. The two therefore MUST share one FFTW
+# instance; they cannot each carry a private copy.
+#
+# Built static, libfftw3.a is absorbed into the shared libamrex, which then
+# re-exports all 916 fftw_/fftwf_ symbols. Because libamrex precedes libfftw3.a
+# on ImpactX's link line and static archives only contribute members that
+# resolve still-undefined symbols, the archive becomes a no-op: impactx_pybind
+# records no FFTW in DT_NEEDED and defers resolution to a runtime global-scope
+# lookup. On ELF that is interposable. Intel MKL exports the FFTW3 wrapper API,
+# so a process that loaded MKL first (conda-forge numpy: libblas.so.3 ->
+# libmkl_rt.so.2) hijacks the public fftw_destroy_plan while LTO-inlined
+# plan-creation still binds FFTW internals (fftw_mkapiplan, fftw_mkproblem_*)
+# in libamrex, which MKL does not export. Plan created by FFTW, freed by MKL ->
+# SIGSEGV in any CSR run.
+#
+# Shared FFTW forces the linker to satisfy those references from libfftw3.so.3
+# and record a real DT_NEEDED (what conda-forge does, verified unaffected), and
+# stops LTO inlining across the .so boundary so only the public API is
+# referenced. auditwheel/delocate vendor the libs next to libamrex.
+#
+# Note this does not *prevent* interposition -- global scope still beats
+# DT_NEEDED, and with MKL loaded every fftw_* symbol binds to MKL. It is safe
+# because MKL implements the whole public FFTW3 API, so once no internals are
+# referenced the hijack is complete and consistent rather than split. Symbol
+# versioning does NOT help here: glibc lets an unversioned definition satisfy a
+# versioned reference. Keep this shared, and keep internals out of the ABI.
+#
+# ELF-only issue: Mach-O two-level namespaces and PE import tables bind imports
+# per-library, so macOS and Windows cannot be interposed this way. Windows keeps
+# FFTW static in library_builders.bat.
 function build_fftw {
     if [ -e fftw-stamp ]; then return; fi
 
@@ -141,7 +177,7 @@ function build_fftw {
     PATH=${CMAKE_BIN}:${PATH} cmake \
       -S fftw-*                  \
       -B build-fftw              \
-      -DBUILD_SHARED_LIBS=OFF    \
+      -DBUILD_SHARED_LIBS=ON     \
       -DBUILD_TESTS=OFF          \
       -DDISABLE_FORTRAN=ON       \
       -DCMAKE_BUILD_TYPE=Release \
@@ -159,7 +195,7 @@ function build_fftw {
     PATH=${CMAKE_BIN}:${PATH} cmake \
       -S fftw-*                  \
       -B build-fftw              \
-      -DBUILD_SHARED_LIBS=OFF    \
+      -DBUILD_SHARED_LIBS=ON     \
       -DBUILD_TESTS=OFF          \
       -DDISABLE_FORTRAN=ON       \
       -DENABLE_FLOAT=ON          \
