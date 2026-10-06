@@ -221,7 +221,7 @@ _SYS_PREFIXES = (
     "ntdll", "rpcrt4", "shlwapi", "comdlg32", "winmm", "version", "setupapi",
     "dbghelp", "secur32", "iphlpapi", "userenv", "psapi", "python",
     "libc.", "libm.", "libdl.", "librt.", "libpthread.", "libgcc_s.",
-    "ld-linux", "libresolv.", "libutil.", "libnsl.", "libomp.",
+    "ld-linux", "ld-musl", "libresolv.", "libutil.", "libnsl.", "libomp.",
     "libsystem", "libobjc.", "libc++.", "libc++abi.",
 )
 

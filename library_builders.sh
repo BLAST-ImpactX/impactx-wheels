@@ -32,10 +32,10 @@ function install_buildessentials {
     fi
 
     # musllinux: Alpine Linux
-    #   pip, tar tool, cmath
+    #   pip, tar, patch tools
     APK_FOUND=$(which apk >/dev/null && { echo 0; } || { echo 1; })
     if [ $APK_FOUND -eq 0 ]; then
-        apk add py3-pip tar
+        apk add py3-pip tar patch
 
     # manylinux: RHEL/Centos based
     #   static libc, tar tool, CMake dependencies
