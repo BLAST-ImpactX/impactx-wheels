@@ -170,7 +170,8 @@ jobs:
       env:
         # Disable PyPy (manylinux image: yum repo issues)
         #   https://github.com/pypa/manylinux/issues/899
-        CIBW_SKIP: "pp*-manylinux*"
+        # musllinux i686: no pydantic-core wheel (via pals-schema)
+        CIBW_SKIP: "pp*-manylinux* *-musllinux_i686"
         CIBW_ARCHS: "${{ matrix.arch }}"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
         # Install dependencies
