@@ -3,7 +3,7 @@ name: wheels
 on: [push, pull_request]
 
 env:
-  COMMON_PATCHES: '.github/setup-py-openpmd-env-impactx.patch'
+  COMMON_PATCHES: ''
 
 jobs:
   build_wheels:
@@ -111,7 +111,7 @@ jobs:
       with:
         repository: 'BLAST-ImpactX/impactx'
         path: 'src'
-        ref: '26.09'
+        ref: '26.10'
 
     - uses: actions/checkout@v4
       with:
@@ -168,11 +168,10 @@ jobs:
 
     - name: Build wheel
       env:
-        # (1) Disable PyPy (manylinux image: yum repo issues)
-        #     https://github.com/pypa/manylinux/issues/899
-        # (2) Disable musl until this AMReX TODO is fixed:
-        #     https://github.com/AMReX-Codes/amrex/issues/4373
-        CIBW_SKIP: "pp*-manylinux* *musllinux*"
+        # Disable PyPy (manylinux image: yum repo issues)
+        #   https://github.com/pypa/manylinux/issues/899
+        # musllinux i686: no pydantic-core wheel (via pals-schema)
+        CIBW_SKIP: "pp*-manylinux* *-musllinux_i686"
         CIBW_ARCHS: "${{ matrix.arch }}"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
         # Install dependencies

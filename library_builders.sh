@@ -32,10 +32,10 @@ function install_buildessentials {
     fi
 
     # musllinux: Alpine Linux
-    #   pip, tar tool, cmath
+    #   pip, tar, patch tools
     APK_FOUND=$(which apk >/dev/null && { echo 0; } || { echo 1; })
     if [ $APK_FOUND -eq 0 ]; then
-        apk add py3-pip tar
+        apk add py3-pip tar patch
 
     # manylinux: RHEL/Centos based
     #   static libc, tar tool, CMake dependencies
@@ -81,17 +81,13 @@ function install_buildessentials {
 function build_amrex {
     if [ -e amrex-stamp ]; then return; fi
 
-    AMREX_VERSION="26.09"
+    AMREX_VERSION="26.10"
 
     curl ${CURL_RETRY} -fsSL -o amrex-${AMREX_VERSION}.tar.gz \
         https://github.com/AMReX-Codes/amrex/releases/download/${AMREX_VERSION}/amrex-${AMREX_VERSION}.tar.gz
     file amrex*.tar.gz
     tar xzf amrex-${AMREX_VERSION}.tar.gz
     rm amrex*.tar.gz
-
-    # 32-bit x86: x87 excess precision trips a static_assert in AMReX_Random.H
-    # (no codegen change, so a no-op elsewhere). AMReX-Codes/amrex#5902
-    patch -p1 -d amrex < .github/amrex-random-x87-assert.patch
 
     PY_BIN=$(which python3)
     CMAKE_BIN="$(${PY_BIN} -m pip show cmake 2>/dev/null | grep Location | cut -d' ' -f2)/cmake/data/bin/"
