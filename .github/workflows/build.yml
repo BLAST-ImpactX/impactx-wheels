@@ -65,7 +65,7 @@ jobs:
           - name: 32bit Windows
             os: windows-2022
             arch: "x86"
-            build: "cp311-* cp312-*"
+            skip: "cp31[3-9]*"
             part: "cp311-cp312"
             env:
               SIMD: "OFF"
@@ -185,7 +185,6 @@ jobs:
         #   https://github.com/pypa/manylinux/issues/899
         # musllinux i686: no pydantic-core wheel (via pals-schema)
         CIBW_SKIP: "pp*-manylinux* *-musllinux_i686 ${{ matrix.skip }}"
-        CIBW_BUILD: "${{ matrix.build || '*' }}"
         CIBW_ARCHS: "${{ matrix.arch }}"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
         # Install dependencies
