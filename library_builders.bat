@@ -30,7 +30,8 @@ exit /b 0
 
   curl -sLo "amrex-%AMREX_VERSION%.zip" ^
     "https://github.com/AMReX-Codes/amrex/archive/refs/tags/%AMREX_VERSION%.zip"
-  powershell Expand-Archive "amrex-%AMREX_VERSION%.zip" -DestinationPath dep-amrex
+  python -m zipfile -e "amrex-%AMREX_VERSION%.zip" dep-amrex
+  if errorlevel 1 exit 1
 
   dir
 
@@ -76,7 +77,8 @@ exit /b 0
 
   curl -sLo fftw-3.3.10.zip ^
     https://fftw.org/pub/fftw/fftw-3.3.10.zip
-  powershell Expand-Archive fftw-3.3.10.zip -DestinationPath dep-fftw
+  python -m zipfile -e fftw-3.3.10.zip dep-fftw
+  if errorlevel 1 exit 1
 
   :: DOUBLE
   cmake -S dep-fftw\fftw-3.3.10 -B build-fftw ^
@@ -124,7 +126,8 @@ exit /b 0
 
   curl -sLo hdf5-1.14.1-2.zip ^
     https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.14/hdf5-1.14.1/src/hdf5-1.14.1-2.zip
-  powershell Expand-Archive hdf5-1.14.1-2.zip -DestinationPath dep-hdf5
+  python -m zipfile -e hdf5-1.14.1-2.zip dep-hdf5
+  if errorlevel 1 exit 1
 
   cmake -S dep-hdf5\hdf5-1.14.1-2 -B build-hdf5 ^
     -DCMAKE_BUILD_TYPE=Release  ^
@@ -163,7 +166,8 @@ exit /b 0
 
   curl -sLo zlib-1.3.1.zip ^
     https://github.com/madler/zlib/archive/v1.3.1.zip
-  powershell Expand-Archive zlib-1.3.1.zip -DestinationPath dep-zlib
+  python -m zipfile -e zlib-1.3.1.zip dep-zlib
+  if errorlevel 1 exit 1
 
   cmake -S dep-zlib\zlib-1.3.1 -B build-zlib ^
     -DBUILD_SHARED_LIBS=ON ^
