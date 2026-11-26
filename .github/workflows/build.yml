@@ -84,7 +84,7 @@ jobs:
           #   https://cibuildwheel.readthedocs.io/en/stable/faq/#apple-silicon
           #   https://github.com/pypa/cibuildwheel/pull/704
           - name: 64bit macOS
-            os: macos-14
+            os: macos-15
             arch: "arm64"
             env:
               SIMD: "ON"
