@@ -7,7 +7,7 @@ env:
 
 jobs:
   build_wheels:
-    name: ${{ matrix.name }} (${{ matrix.arch }})
+    name: ${{ matrix.name }} (${{ matrix.arch }}${{ matrix.part && format(', {0}', matrix.part) || '' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -61,10 +61,23 @@ jobs:
               WHEEL_ARCHFLAGS: "/arch:AVX2"
               CMAKE_BUILD_PARALLEL_LEVEL: 4
 
-          # x86 (32bit)
+          # x86 (32bit): split by CPython, one job exceeds the 6h job limit
           - name: 32bit Windows
             os: windows-2022
             arch: "x86"
+            skip: "cp31[3-9]*"
+            part: "cp311-cp312"
+            env:
+              SIMD: "OFF"
+              CMAKE_GENERATOR: "Visual Studio 17 2022"
+              CMAKE_GENERATOR_PLATFORM: "Win32"
+              CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+          - name: 32bit Windows
+            os: windows-2022
+            arch: "x86"
+            skip: "cp311-* cp312-*"
+            part: "cp313+"
             env:
               SIMD: "OFF"
               CMAKE_GENERATOR: "Visual Studio 17 2022"
@@ -171,7 +184,7 @@ jobs:
         # Disable PyPy (manylinux image: yum repo issues)
         #   https://github.com/pypa/manylinux/issues/899
         # musllinux i686: no pydantic-core wheel (via pals-schema)
-        CIBW_SKIP: "pp*-manylinux* *-musllinux_i686"
+        CIBW_SKIP: "pp*-manylinux* *-musllinux_i686 ${{ matrix.skip }}"
         CIBW_ARCHS: "${{ matrix.arch }}"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
         # Install dependencies
@@ -237,7 +250,7 @@ jobs:
     - uses: actions/upload-artifact@v4
       name: Publish as GitHub artifact
       with:
-        name: wheels-${{ matrix.os }}-${{ matrix.arch }}
+        name: wheels-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.part && format('-{0}', matrix.part) || '' }}
         path: ./wheelhouse
         overwrite: true
 
